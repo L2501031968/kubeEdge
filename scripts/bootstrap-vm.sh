@@ -14,7 +14,8 @@ set -euo pipefail
 CLUSTER_NAME="${KB_CLUSTER_NAME:-kb-sim}"
 KUBECTL_VERSION="${KB_KUBECTL_VERSION:-v1.30.14}"
 KIND_VERSION="${KB_KIND_VERSION:-v0.30.0}"
-KIND_IMAGE="${KB_KIND_IMAGE-kindest/node:v1.30.14}"
+# kindest/node:v1.30.14 并不存在；镜像标签需要与 kind 实际发布线保持一致。
+KIND_IMAGE="${KB_KIND_IMAGE-kindest/node:v1.30.13}"
 METRICS_IMAGE="registry.k8s.io/metrics-server/metrics-server:v0.7.2"
 BUSYBOX_IMAGE="busybox:1.36"
 PAUSE_IMAGE="registry.k8s.io/pause:3.9"

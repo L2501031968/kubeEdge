@@ -54,7 +54,11 @@ echo "操作用户: $TARGET_USER"
 log "安装 docker / 基础工具"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl conntrack iptables docker.io
+if ! apt-get install -y --no-install-recommends ca-certificates curl conntrack iptables docker.io; then
+  die "安装 docker.io 失败。Ubuntu 25.10 等新版本如果缺 universe 源，请先执行：
+  sudo add-apt-repository -y universe && sudo apt-get update
+然后重新运行本脚本。"
+fi
 systemctl enable --now docker
 
 if [ -n "${KB_DOCKER_MIRRORS:-}" ]; then

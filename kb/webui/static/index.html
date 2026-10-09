@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KubeEdge Board</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">KB</span>
+      <h1>KubeEdge Board</h1>
+    </div>
+    <div class="topbar-meta">
+      <span id="mode-badge" class="badge badge-muted">加载中</span>
+      <span id="metrics-badge" class="badge badge-muted">监控检测中</span>
+      <span id="updated" class="muted"></span>
+      <button id="refresh" class="btn" type="button">刷新</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="error" class="banner banner-error hidden"></div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>环境体检</h2>
+        <span id="summary" class="muted"></span>
+      </div>
+      <div id="checks" class="checks"></div>
+    </section>
+
+    <section class="panel" id="actions-panel">
+      <div class="panel-head">
+        <h2>操作</h2>
+        <div class="panel-tools">
+          <span id="actions-meta" class="muted"></span>
+          <label class="param hidden" id="agent-target">
+            <span>执行位置</span>
+            <select id="agent-select"></select>
+          </label>
+        </div>
+      </div>
+      <div id="actions" class="actions"></div>
+      <div id="action-result" class="action-result hidden"></div>
+    </section>
+
+    <section class="panel" id="nodes-panel">
+      <div class="panel-head">
+        <h2>节点</h2>
+        <span id="nodes-meta" class="muted"></span>
+      </div>
+      <div id="nodes" class="node-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>工作负载</h2>
+        <span class="muted">Amarisoft 组件与占位工作负载</span>
+      </div>
+      <div class="table-wrap">
+        <table id="deployments">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>命名空间</th>
+              <th class="num">副本</th>
+              <th class="num">CPU 申请/Pod</th>
+              <th class="num">CPU 限额/Pod</th>
+              <th class="num">CPU 申请总量</th>
+              <th>节点</th>
+              <th>镜像</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Pod</h2>
+        <span class="muted">申请量为调度依据，使用量为实时监控数据</span>
+      </div>
+      <div class="table-wrap">
+        <table id="pods">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>命名空间</th>
+              <th>节点</th>
+              <th>状态</th>
+              <th class="num">重启</th>
+              <th class="num">CPU 申请</th>
+              <th class="num">CPU 限额</th>
+              <th class="num">CPU 使用</th>
+              <th class="num">内存申请</th>
+              <th>QoS</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>执行记录</h2>
+        <span class="muted">来自审计日志，最近 40 条命令</span>
+      </div>
+      <div class="table-wrap">
+        <table id="log">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th class="num">返回码</th>
+              <th>命令</th>
+              <th>输出摘要</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

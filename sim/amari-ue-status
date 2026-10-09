@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# 模拟 amari-ue-status：读取模拟状态文件并打印一次或数次同步信息。
+set -euo pipefail
+
+STATE_DIR="${KB_SIM_STATE:-/var/lib/kb-sim}"
+STATE_FILE="$STATE_DIR/ue-power"
+
+power="unknown"
+if [ -f "$STATE_FILE" ]; then
+  power="$(cat "$STATE_FILE")"
+fi
+
+print_once() {
+  echo "[sim] UE 电源: ${power}"
+  if [ "$power" = "on" ]; then
+    echo "[sim] cell 1: 3500 MHz / 100 MHz, sync=ok, rsrp=-92 dBm"
+    echo "[sim] PDCP: ul=12.4 Mbps dl=48.1 Mbps"
+  else
+    echo "[sim] cell 1: 未运行（UE 处于下电状态）"
+  fi
+}
+
+case "${1:---once}" in
+  --once)
+    print_once
+    ;;
+  --interval)
+    interval="${2:-1}"
+    for _ in 1 2 3; do
+      print_once
+      sleep "$interval"
+    done
+    ;;
+  *)
+    echo "用法: amari-ue-status [--once | --interval 秒]" >&2
+    exit 2
+    ;;
+esac

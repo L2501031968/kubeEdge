@@ -1,0 +1,19 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kb-sim
+nodes:
+  # 云侧：控制面 + KubeEdge 云侧（真实环境里这台是 10.129.93.208）
+  - role: control-plane
+    labels:
+      kb.local/name: cloud
+      kb.local/role: cloud
+  # 边缘侧：U3 基站，承载 amari-core / ims / ran / sat
+  - role: worker
+    labels:
+      kb.local/name: d2000-edge
+      kb.local/role: edge
+  # 边缘侧：UE 节点，承载 amari-ue
+  - role: worker
+    labels:
+      kb.local/name: sdr
+      kb.local/role: edge

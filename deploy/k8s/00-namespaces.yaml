@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: amari-d2000
+  labels:
+    kb.local/role: edge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: amari-edge
+  labels:
+    kb.local/role: edge

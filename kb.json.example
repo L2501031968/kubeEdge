@@ -1,0 +1,11 @@
+{
+  "role": "host",
+  "listen": "0.0.0.0:8080",
+  "demo": false,
+  "sim": false,
+  "dry_run": false,
+  "allow_real_hardware": false,
+  "agents": [
+    { "name": "edge-sim", "url": "http://127.0.0.1:8081" }
+  ]
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.log
+.kb/
+bin/
+dist/
+discovery.json
+kb.json
+.venv/
+.DS_Store

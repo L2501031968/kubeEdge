@@ -1,0 +1,218 @@
+# 测试环境的 Amarisoft 占位工作负载。
+# 使用 kind 节点内已经预置的 pause 镜像，避免额外拉取镜像；requests/limits 与
+# 真实环境的量级保持一致，便于观察调度与资源占用。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-core
+  namespace: amari-d2000
+  labels:
+    app: amari-core
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-core
+  template:
+    metadata:
+      labels:
+        app: amari-core
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 300m
+              memory: 256Mi
+            limits:
+              cpu: 600m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-ims
+  namespace: amari-d2000
+  labels:
+    app: amari-ims
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-ims
+  template:
+    metadata:
+      labels:
+        app: amari-ims
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 200m
+              memory: 192Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-ran
+  namespace: amari-d2000
+  labels:
+    app: amari-ran
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-ran
+  template:
+    metadata:
+      labels:
+        app: amari-ran
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 500m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-sat
+  namespace: amari-d2000
+  labels:
+    app: amari-sat
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-sat
+  template:
+    metadata:
+      labels:
+        app: amari-sat
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 300m
+              memory: 256Mi
+            limits:
+              cpu: 600m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-load
+  namespace: amari-d2000
+  labels:
+    app: amari-load
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-load
+  template:
+    metadata:
+      labels:
+        app: amari-load
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 400m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-ue
+  namespace: amari-edge
+  labels:
+    app: amari-ue
+    kb.local/sim: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-ue
+  template:
+    metadata:
+      labels:
+        app: amari-ue
+    spec:
+      nodeSelector:
+        kb.local/name: sdr
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: main
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 200m
+              memory: 192Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi

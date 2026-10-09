@@ -1,0 +1,10 @@
+# 低内存备选方案（虚拟机内存 < 6G 时使用）：单节点集群。
+# 引导脚本会自动去掉 control-plane 污点，并移除工作负载的 nodeSelector。
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kb-sim
+nodes:
+  - role: control-plane
+    labels:
+      kb.local/name: cloud
+      kb.local/role: cloud

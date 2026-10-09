@@ -1,0 +1,37 @@
+# 可选：给 d2000-edge 增加一个真实吃 CPU 的 Pod，让界面上的「CPU 使用」有波动。
+# 引导脚本只在 busybox 镜像可用时应用它。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amari-burn
+  namespace: amari-d2000
+  labels:
+    app: amari-burn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: amari-burn
+  template:
+    metadata:
+      labels:
+        app: amari-burn
+    spec:
+      nodeSelector:
+        kb.local/name: d2000-edge
+      tolerations:
+        - key: kb.local/edge
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: burn
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "while true; do :; done"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 32Mi
+            limits:
+              cpu: 300m
+              memory: 64Mi

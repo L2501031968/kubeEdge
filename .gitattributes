@@ -1,0 +1,5 @@
+# 目标机是 Linux：仓库里的文本文件统一用 LF，避免从 Windows 克隆出 CRLF 脚本。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

@@ -131,7 +131,9 @@ KB_ROLE=edge KB_LISTEN=0.0.0.0:8081 KB_ALLOW_REAL_HARDWARE=1 bash scripts/run-co
 | `KB_ALLOW_REAL_HARDWARE` | `1` = 允许操作真实设备（默认关闭） |
 
 `bootstrap-vm.sh` 另外接受 `KB_NODES=1|3`、`KB_DOCKER_MIRRORS`、`KB_INNER_MIRROR`、
-`KB_KIND_IMAGE`、`KB_KUBECTL_URL`、`KB_KIND_URL`，国内网络可以先配镜像源再执行。
+`KB_IMAGE_MIRRORS`、`KB_KIND_IMAGE`、`KB_KUBECTL_URL`、`KB_KIND_URL`，
+国内网络可以先配镜像源再执行。默认会通过 `m.daocloud.io` 兜底拉取 Docker Hub
+与 `registry.k8s.io` 镜像；也可以改成逗号分隔的镜像前缀列表。
 
 ## 不用集群也能看界面
 
@@ -167,8 +169,12 @@ tests/              单元测试（python3 -m unittest discover -s tests）
 
 - Pod 一直 Pending：五个组件的 CPU 申请加起来约 2 核，虚拟机至少给 4 vCPU；
   用 `kubectl get events -A --sort-by=.lastTimestamp` 看调度原因。
-- Pod 卡在 ImagePullBackOff：节点里缺镜像，重跑 `bootstrap-vm.sh` 时加
-  `KB_INNER_MIRROR=<镜像加速地址>`，或先在宿主机 `docker pull` 再 `kind load`。
+- 创建集群时报 `registry-1.docker.io ... connection refused`：这是 Docker Hub
+  网络被阻断或 DNS 被污染。新版脚本会自动尝试 `m.daocloud.io`；如仍失败可指定
+  `KB_IMAGE_MIRRORS=<镜像站1>,<镜像站2>` 后重跑 `bootstrap-vm.sh`。
+- Pod 卡在 ImagePullBackOff：重跑 `bootstrap-vm.sh`，脚本会预拉 pause、busybox 和
+  metrics-server 并导入 kind；也可以手动执行 `docker pull <镜像>` 后
+  `kind load docker-image <镜像> --name kb-sim`。
 - 显示「实时监控未启用」：metrics-server 还没就绪，等一两分钟刷新，其余功能不受影响。
 - 只想调某个组件而不走整套流程：用「调整组件副本数」或「滚动重启组件」。
 

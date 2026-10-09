@@ -7,6 +7,7 @@
 #   KB_NODES=1|3              强制节点数（默认按内存自动选择）
 #   KB_DOCKER_MIRRORS=a,b     docker 守护进程镜像加速（宿主机拉取 kind 节点镜像用）
 #   KB_INNER_MIRROR=url       集群内 containerd 镜像加速（节点内拉取镜像用）
+#   KB_IMAGE_MIRRORS=a,b      宿主机预拉镜像时使用的完整镜像前缀（默认 m.daocloud.io）
 #   KB_KIND_IMAGE=...         kind 节点镜像，留空则用 kind 默认镜像
 set -euo pipefail
 
@@ -16,6 +17,7 @@ KIND_VERSION="${KB_KIND_VERSION:-v0.30.0}"
 KIND_IMAGE="${KB_KIND_IMAGE-kindest/node:v1.30.14}"
 METRICS_IMAGE="registry.k8s.io/metrics-server/metrics-server:v0.7.2"
 BUSYBOX_IMAGE="busybox:1.36"
+PAUSE_IMAGE="registry.k8s.io/pause:3.9"
 NODE_COUNT="${KB_NODES:-}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,6 +25,59 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[warn] %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m[error] %s\033[0m\n' "$*" >&2; exit 1; }
+
+mirror_image_ref() {
+  local image="$1"
+
+  case "$image" in
+    docker.io/*)         printf '%s' "${image#docker.io/}" ;;
+    kindest/*|library/*) printf '%s' "docker.io/$image" ;;
+    busybox:*)           printf '%s' "docker.io/library/$image" ;;
+    registry.k8s.io/*)   printf '%s' "$image" ;;
+    *://*)               printf '%s' "${image#*://}" ;;
+    *)                   printf '%s' "docker.io/$image" ;;
+  esac
+}
+
+docker_pull_image() {
+  local image="$1"
+  local source mirror ref
+  local -a mirrors
+
+  if docker image inspect "$image" > /dev/null 2>&1; then
+    return 0
+  fi
+
+  if timeout 600 docker pull "$image" > /dev/null; then
+    return 0
+  fi
+
+  source="$(mirror_image_ref "$image")"
+  IFS=',' read -r -a mirrors <<< "${KB_IMAGE_MIRRORS:-m.daocloud.io}"
+  for mirror in "${mirrors[@]}"; do
+    mirror="${mirror#"${mirror%%[![:space:]]*}"}"
+    mirror="${mirror%"${mirror##*[![:space:]]}"}"
+    mirror="${mirror%/}"
+    mirror="${mirror#http://}"
+    mirror="${mirror#https://}"
+    [ -n "$mirror" ] || continue
+
+    ref="$mirror/$source"
+    echo "镜像拉取失败，尝试镜像站：$ref"
+    if timeout 600 docker pull "$ref" > /dev/null; then
+      docker tag "$ref" "$image"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+preload_image() {
+  local image="$1"
+  docker_pull_image "$image" || return 1
+  kind load docker-image "$image" --name "$CLUSTER_NAME" > /dev/null 2>&1 || return 1
+}
 
 if [ "$(id -u)" -ne 0 ]; then
   die "请用 root 运行：sudo bash scripts/bootstrap-vm.sh"
@@ -124,6 +179,15 @@ containerdConfigPatches:
 EOF
 fi
 
+if [ -n "$KIND_IMAGE" ]; then
+  log "准备 kind 节点镜像：$KIND_IMAGE"
+  if docker_pull_image "$KIND_IMAGE"; then
+    echo "kind 节点镜像已就绪"
+  else
+    warn "kind 节点镜像预拉取失败，交给 kind 继续尝试"
+  fi
+fi
+
 log "创建 kind 集群（$NODE_COUNT 节点，名称 $CLUSTER_NAME）"
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
   echo "集群已存在，跳过创建"
@@ -174,6 +238,21 @@ fi
 # 去掉控制面污点，便于把组件手动调度到云侧节点做实验
 kubectl taint node --all node-role.kubernetes.io/control-plane- > /dev/null 2>&1 || true
 
+log "预加载工作负载镜像"
+if preload_image "$PAUSE_IMAGE"; then
+  echo "pause 镜像已导入集群"
+else
+  warn "pause 镜像预加载失败，集群会尝试自行拉取"
+fi
+
+BUSYBOX_READY=0
+if preload_image "$BUSYBOX_IMAGE"; then
+  BUSYBOX_READY=1
+  echo "busybox 镜像已导入集群"
+else
+  warn "busybox 镜像预加载失败，稍后跳过 CPU 压力 Pod"
+fi
+
 log "部署占位工作负载"
 kubectl apply -f "$REPO_DIR/deploy/k8s/00-namespaces.yaml"
 kubectl apply -f "$REPO_DIR/deploy/k8s/10-workloads.yaml"
@@ -185,13 +264,6 @@ if [ "$NODE_COUNT" = "1" ]; then
       -p='[{"op":"remove","path":"/spec/template/spec/nodeSelector"}]' > /dev/null 2>&1 || true
   done
 fi
-
-preload_image() {
-  local image="$1"
-  docker pull "$image" > /dev/null 2>&1 || return 1
-  kind load docker-image "$image" --name "$CLUSTER_NAME" > /dev/null 2>&1 || return 1
-  return 0
-}
 
 log "安装 metrics-server"
 if preload_image "$METRICS_IMAGE"; then
@@ -205,7 +277,7 @@ if ! kubectl -n kube-system rollout status deployment/metrics-server --timeout=1
 fi
 
 log "可选：加载 CPU 压力 Pod"
-if preload_image "$BUSYBOX_IMAGE"; then
+if [ "$BUSYBOX_READY" -eq 1 ]; then
   kubectl apply -f "$REPO_DIR/deploy/k8s/20-load-generator.yaml"
 else
   warn "跳过 amari-burn（busybox 镜像不可用）"

@@ -1,8 +1,10 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
+from kb.__main__ import ensure_local_config
 from kb.config import Config
 
 
@@ -73,6 +75,57 @@ class ConfigLoadTest(unittest.TestCase):
     def test_empty_node_arch_override_is_dropped(self):
         cfg = self._load({"role": "host", "node_arch_overrides": {"d2000-edge": ""}})
         self.assertEqual(cfg.node_arch_overrides, {})
+
+
+class EnsureLocalConfigTest(unittest.TestCase):
+    """首次启动自动生成 kb.json，省掉手动 copy 一步。"""
+
+    def _in_dir(self, tmp):
+        class _Cwd:
+            def __enter__(inner):
+                inner.previous = os.getcwd()
+                os.chdir(tmp)
+
+            def __exit__(inner, *exc):
+                os.chdir(inner.previous)
+                return False
+
+        return _Cwd()
+
+    def test_missing_file_is_created_from_example(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "kb.json.example").write_text(
+                json.dumps({"role": "edge", "ue_capacity": 8}), encoding="utf-8"
+            )
+            with self._in_dir(tmp):
+                created = ensure_local_config(None)
+                self.assertIsNotNone(created)
+                self.assertEqual(created, Path(tmp) / "kb.json")
+                cfg = Config.load(None)
+            self.assertEqual(cfg.role, "edge")
+            self.assertEqual(cfg.ue_capacity, 8)
+
+    def test_existing_file_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "kb.json").write_text('{"role": "edge"}', encoding="utf-8")
+            Path(tmp, "kb.json.example").write_text('{"role": "host"}', encoding="utf-8")
+            with self._in_dir(tmp):
+                self.assertIsNone(ensure_local_config(None))
+                cfg = Config.load(None)
+            self.assertEqual(cfg.role, "edge")
+
+    def test_explicit_path_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "kb.json.example").write_text('{"role": "host"}', encoding="utf-8")
+            with self._in_dir(tmp):
+                self.assertIsNone(ensure_local_config(str(Path(tmp) / "custom.json")))
+                self.assertFalse((Path(tmp) / "kb.json").exists())
+
+    def test_without_example_nothing_is_created(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self._in_dir(tmp):
+                self.assertIsNone(ensure_local_config(None))
+                self.assertFalse((Path(tmp) / "kb.json").exists())
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ ARGS=(--role "$ROLE")
 [ -n "${KB_KUBECONFIG:-}" ] && ARGS+=(--kubeconfig "$KB_KUBECONFIG")
 
 if [ ! -f "$REPO_DIR/kb.json" ]; then
-  echo "提示: 未发现 kb.json，使用默认配置；需要在页面上跳转到边缘控制台时执行 cp kb.json.example kb.json"
+  echo "提示: 未发现 kb.json，将按 kb.json.example 自动生成一份；后续改配置编辑 kb.json"
 fi
 
 VM_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"

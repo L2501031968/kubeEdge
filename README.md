@@ -120,7 +120,7 @@ cd ~/kubeEdge
 sudo bash scripts/bootstrap-vm.sh
 
 # 3. 启动主机控制台（读取 kb.json，监听 0.0.0.0:8080）
-cp kb.json.example kb.json
+#    没有 kb.json 时会自动按 kb.json.example 生成一份，启动信息里会打印路径
 bash scripts/run-console.sh
 
 # 4. 另开一个终端，启动边缘模拟控制台（监听 0.0.0.0:8081）

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+from pathlib import Path
 
 from .actions import catalog
 from .agent import EdgeAgent
@@ -32,6 +34,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def ensure_local_config(explicit_path: str | None) -> Path | None:
+    """首次启动时自动把 kb.json.example 复制成 kb.json。
+
+    程序只读 kb.json；没这个文件时全部走内置默认值，用户改了 .example 也不会生效。
+    这里补上这一步，省得每个人都要先手动 copy 一次。已存在的 kb.json 不会被动。
+    """
+
+    if explicit_path:
+        return None
+    target = Path.cwd() / "kb.json"
+    if target.is_file():
+        return None
+    template = Path.cwd() / "kb.json.example"
+    if not template.is_file():
+        return None
+    try:
+        shutil.copyfile(template, target)
+    except OSError as exc:
+        print("提示: 无法自动生成 kb.json（%s），将使用内置默认配置" % exc)
+        return None
+    return target
+
+
 def main(argv=None) -> int:
     # Windows 控制台/管道默认不是 UTF-8，输出中文 JSON 时会乱码。
     for stream in (sys.stdout, sys.stderr):
@@ -44,6 +69,9 @@ def main(argv=None) -> int:
             pass
 
     args = build_parser().parse_args(argv)
+    created = ensure_local_config(args.config)
+    if created is not None:
+        print("已根据 kb.json.example 生成 %s，后续修改配置请编辑这个文件。" % created)
     cfg = Config.load(args.config, args)
     cfg.audit_log.parent.mkdir(parents=True, exist_ok=True)
     # 演示模式下所有命令都只打印不执行，方便在没有集群的电脑上展示界面。

@@ -579,6 +579,18 @@ def build_users(
     }
 
 
+def _arch_keys(node: Dict[str, Any]) -> List[str]:
+    """节点可用来匹配架构覆盖的写法：真实节点名 + kb.local/name 标签值。
+
+    kind 之类的测试集群里节点名是 kb-sim-worker，业务名字写在
+    kb.local/name=d2000-edge；真实设备上两者通常是同一个值。
+    """
+
+    keys = [str(node.get("name") or "")]
+    keys.append(str((node.get("labels") or {}).get("kb.local/name") or ""))
+    return [key for key in keys if key]
+
+
 def _display_arch(
     node: Dict[str, Any],
     overrides: Optional[Dict[str, str]],
@@ -588,12 +600,24 @@ def _display_arch(
     只影响界面“架构”一列，不改动集群标签；真实设备上应留空覆盖。
     """
 
-    name = str(node.get("name") or "")
     if overrides:
-        override = overrides.get(name)
-        if override:
-            return str(override)
+        for key in _arch_keys(node):
+            override = overrides.get(key)
+            if override:
+                return str(override)
     return (node.get("labels") or {}).get("kubernetes.io/arch")
+
+
+def _unmatched_arch_overrides(
+    nodes: Sequence[Dict[str, Any]],
+    overrides: Optional[Dict[str, str]],
+) -> List[str]:
+    """列出没匹配上任何节点的覆盖 key，界面据此提示配置写错了。"""
+
+    if not overrides:
+        return []
+    known = {key for node in nodes for key in _arch_keys(node)}
+    return sorted(str(key) for key in overrides if str(key) not in known)
 
 
 def build_resources(
@@ -741,6 +765,7 @@ def build_resources(
         "nodes": node_views,
         "accelerators": list(accelerators.values()),
         "missing_accelerators": missing,
+        "arch_override_unmatched": _unmatched_arch_overrides(nodes, arch_overrides),
         "pod_count": len(pods),
         "sources": [
             "节点可分配量来自 node.status.allocatable",

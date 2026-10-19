@@ -116,6 +116,37 @@ class NodeArchDisplayTest(unittest.TestCase):
         self.assertEqual(nodes["cloud"]["arch"], "amd64")
         self.assertEqual(nodes["sdr"]["arch"], "amd64")
 
+    def test_override_accepts_kb_local_name_label_value(self):
+        # 演示/真实集群里节点名和 kb.local/name 可能不同，两种写法都要认。
+        raw = fixtures.demo_raw()
+        for node in raw["nodes"]["items"]:
+            if node["metadata"]["name"] == "d2000-edge":
+                node["metadata"]["name"] = "kb-sim-worker"
+                node["metadata"]["labels"]["kubernetes.io/hostname"] = "kb-sim-worker"
+        snapshot = build_snapshot(raw, "demo")
+        domain = build_domain(
+            snapshot["nodes"],
+            snapshot["pods"],
+            snapshot["deployments"],
+            None,
+            64,
+            "demo",
+            {"d2000-edge": "arm64"},
+        )
+        nodes = {node["name"]: node for node in domain["resources"]["nodes"]}
+        self.assertEqual(nodes["kb-sim-worker"]["arch"], "arm64")
+
+    def test_unmatched_overrides_are_reported_for_the_ui(self):
+        domain = demo_domain(arch_overrides={"kb-sim-worker": "arm64", "cloud": "arm64"})
+        self.assertEqual(
+            domain["resources"]["arch_override_unmatched"],
+            ["kb-sim-worker"],
+        )
+
+    def test_matched_overrides_report_no_warning(self):
+        domain = demo_domain(arch_overrides={"d2000-edge": "arm64"})
+        self.assertEqual(domain["resources"]["arch_override_unmatched"], [])
+
 
 class UserFacetTest(unittest.TestCase):
     def test_missing_source_reports_unavailable(self):

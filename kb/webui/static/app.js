@@ -1,7 +1,7 @@
 "use strict";
 
 // 前端版本标记：用于确认浏览器加载的是不是最新界面（旧缓存会显示旧值）。
-const UI_BUILD = "2026-10-19.3";
+const UI_BUILD = "2026-10-19.4";
 const REFRESH_MS = 15000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STARTUP_COMPONENTS = [
@@ -879,6 +879,12 @@ function renderResources() {
     const parts = (resources.sources || []).slice();
     if ((resources.missing_accelerators || []).length) {
       parts.push("未上报加速资源：" + resources.missing_accelerators.join("、"));
+    }
+    if ((resources.arch_override_unmatched || []).length) {
+      parts.push(
+        "架构覆盖未匹配到节点：" + resources.arch_override_unmatched.join("、") +
+        "（请检查 kb.json 的 node_arch_overrides，key 用节点名或 kb.local/name 标签值）"
+      );
     }
     notes.textContent = parts.join("；");
   }

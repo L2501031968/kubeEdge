@@ -27,7 +27,6 @@ COMPONENT_LABELS = {
     "amari-ran": "基站 RAN",
     "amari-sat": "卫星 SAT",
     "amari-ue": "UE 终端",
-    "amari-load": "诊断负载",
 }
 
 # 业务模块定义。组件名、标签、命名空间三类匹配方式取并集，

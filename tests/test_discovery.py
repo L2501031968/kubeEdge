@@ -18,17 +18,17 @@ class BuildSnapshotTest(unittest.TestCase):
         summary = self.snapshot["summary"]
         self.assertEqual(summary["nodes_total"], 3)
         self.assertEqual(summary["nodes_ready"], 3)
-        self.assertEqual(summary["pods_total"], 8)
-        self.assertEqual(summary["pods_running"], 8)
-        self.assertEqual(summary["deployments_total"], 8)
+        self.assertEqual(summary["pods_total"], 7)
+        self.assertEqual(summary["pods_running"], 7)
+        self.assertEqual(summary["deployments_total"], 7)
 
     def test_nodes_carry_usage_and_requests(self):
         nodes = {node["name"]: node for node in self.snapshot["nodes"]}
         self.assertEqual(nodes["d2000-edge"]["display_name"], "d2000-edge")
         self.assertIn("edge", nodes["sdr"]["roles"])
         self.assertAlmostEqual(nodes["cloud"]["cpu_used_cores"], 0.12)
-        self.assertAlmostEqual(nodes["d2000-edge"]["cpu_used_cores"], 1.45)
-        self.assertAlmostEqual(nodes["d2000-edge"]["cpu_requested_cores"], 1.7)
+        self.assertAlmostEqual(nodes["d2000-edge"]["cpu_used_cores"], 0.955)
+        self.assertAlmostEqual(nodes["d2000-edge"]["cpu_requested_cores"], 1.3)
         self.assertEqual(nodes["sdr"]["pods"], 1)
 
     def test_pods_resources_and_qos(self):

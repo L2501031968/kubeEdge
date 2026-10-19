@@ -254,8 +254,12 @@ else
   warn "busybox 镜像预加载失败，稍后跳过 CPU 压力 Pod"
 fi
 
-log "部署占位工作负载"
+log "部署基础工作负载"
 kubectl apply -f "$REPO_DIR/deploy/k8s/00-namespaces.yaml"
+if kubectl -n amari-d2000 get deployment amari-load >/dev/null 2>&1; then
+  kubectl -n amari-d2000 delete deployment amari-load >/dev/null
+  echo "已清理旧版 amari-load 占位负载"
+fi
 kubectl apply -f "$REPO_DIR/deploy/k8s/10-workloads.yaml"
 
 if [ "$NODE_COUNT" = "1" ]; then

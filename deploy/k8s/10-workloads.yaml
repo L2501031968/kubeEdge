@@ -148,42 +148,6 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: amari-load
-  namespace: amari-d2000
-  labels:
-    app: amari-load
-    kb.local/sim: "true"
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: amari-load
-  template:
-    metadata:
-      labels:
-        app: amari-load
-    spec:
-      nodeSelector:
-        kb.local/name: d2000-edge
-      tolerations:
-        - key: kb.local/edge
-          operator: Exists
-          effect: NoSchedule
-      containers:
-        - name: main
-          image: registry.k8s.io/pause:3.9
-          imagePullPolicy: IfNotPresent
-          resources:
-            requests:
-              cpu: 400m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
   name: amari-ue
   namespace: amari-edge
   labels:

@@ -37,10 +37,11 @@ class ModuleMembershipTest(unittest.TestCase):
         self.assertEqual(self.modules["ntn-ran"]["status"], "running")
         self.assertEqual(self.modules["ue"]["status"], "running")
 
-    def test_diagnostic_load_is_not_a_business_module(self):
-        for item in self.modules.values():
-            self.assertNotIn("amari-load", [component["name"] for component in item["components"]])
-            self.assertFalse([pod for pod in item["pods"] if pod["name"].startswith("amari-load")])
+    def test_diagnostic_load_is_not_deployed(self):
+        snapshot = build_snapshot(fixtures.demo_raw(), "demo")
+        names = [pod["name"] for pod in snapshot["pods"]]
+        names += [item["name"] for item in snapshot["deployments"]]
+        self.assertFalse([name for name in names if name.startswith("amari-load")])
 
     def test_ai_and_accelerator_modules_are_not_deployed(self):
         self.assertEqual(self.modules["ai-model"]["status"], "not-deployed")

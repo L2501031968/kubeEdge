@@ -1,7 +1,7 @@
 "use strict";
 
 // 前端版本标记：用于确认浏览器加载的是不是最新界面（旧缓存会显示旧值）。
-const UI_BUILD = "2026-10-19.4";
+const UI_BUILD = "2026-10-19.5";
 const REFRESH_MS = 15000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STARTUP_COMPONENTS = [

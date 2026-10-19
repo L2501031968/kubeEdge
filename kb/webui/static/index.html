@@ -3,14 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KubeEdge Board</title>
+  <title>星地融合通信异构资源协同管理平台</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">KB</span>
-      <h1>KubeEdge Board</h1>
+      <span class="logo">星地</span>
+      <div class="brand-text">
+        <h1>星地融合通信异构资源协同管理平台</h1>
+        <p>云边协同 · 异构资源 · 用户接入</p>
+      </div>
     </div>
     <div class="topbar-meta">
       <span id="mode-badge" class="badge badge-muted">加载中</span>
@@ -20,108 +24,499 @@
     </div>
   </header>
 
+  <nav class="nav" id="nav">
+    <a class="nav-item active" href="#overview" data-page="overview">总览</a>
+    <a class="nav-item" href="#users" data-page="users">用户接入</a>
+    <a class="nav-item" href="#modules" data-page="modules">业务模块</a>
+    <a class="nav-item" href="#resources" data-page="resources">异构资源</a>
+    <a class="nav-item" href="#instances" data-page="instances">运行实例</a>
+    <a class="nav-item" href="#deploy" data-page="deploy">部署与 YAML</a>
+    <a class="nav-item" href="#log" data-page="log">执行记录</a>
+    <a class="nav-item" href="#settings" data-page="settings">系统设置</a>
+  </nav>
+
   <main>
     <div id="error" class="banner banner-error hidden"></div>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>环境体检</h2>
-        <span id="summary" class="muted"></span>
-      </div>
-      <div id="checks" class="checks"></div>
+    <section class="page" data-page="overview">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>环境体检</h2>
+          <div class="panel-tools">
+            <span id="summary" class="muted"></span>
+            <span id="checks-actions" class="checks-actions hidden"></span>
+          </div>
+        </div>
+        <div id="checks" class="checks"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>关键指标</h2>
+          <span id="overview-meta" class="muted"></span>
+        </div>
+        <div id="overview-metrics" class="metric-grid"></div>
+        <div id="overview-modules" class="module-strip"></div>
+        <div id="overview-domain-note" class="muted"></div>
+      </section>
+
+      <section class="panel" id="actions-panel">
+        <div class="panel-head">
+          <h2>运行编排</h2>
+          <div class="panel-tools">
+            <span id="actions-meta" class="muted"></span>
+            <label class="param hidden" id="agent-target">
+              <span>执行位置</span>
+              <select id="agent-select"></select>
+            </label>
+          </div>
+        </div>
+        <div id="actions" class="actions"></div>
+        <div id="action-result" class="action-result hidden"></div>
+      </section>
     </section>
 
-    <section class="panel" id="actions-panel">
-      <div class="panel-head">
-        <h2>操作</h2>
-        <div class="panel-tools">
-          <span id="actions-meta" class="muted"></span>
-          <label class="param hidden" id="agent-target">
-            <span>执行位置</span>
-            <select id="agent-select"></select>
+    <section class="page hidden" data-page="users">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>用户接入</h2>
+          <span id="users-meta" class="muted"></span>
+        </div>
+        <div id="users-summary" class="metric-grid"></div>
+        <div id="users-note" class="muted"></div>
+      </section>
+
+      <section class="panel hidden" id="users-unavailable">
+        <div class="panel-head">
+          <h2>未接入用户数据源</h2>
+        </div>
+        <p class="hint">
+          平台不伪造用户数。接入 AMF / SMF / 设备模型导出的 JSON 后，这里显示在线用户、
+          会话、带宽与 PRB 占用，配置方式见「系统设置」。
+        </p>
+        <div id="users-ue-pods" class="module-strip"></div>
+      </section>
+
+      <section class="panel" id="users-list-panel">
+        <div class="panel-head">
+          <h2>用户列表</h2>
+          <span class="muted">共享 Pod 时单用户资源按 Pod 申请量折算平均值</span>
+        </div>
+        <div class="list-tools">
+          <label class="filter filter-search">
+            <span>搜索</span>
+            <input id="user-search" type="search" placeholder="用户、小区、IP 或备注">
+          </label>
+          <label class="filter">
+            <span>状态</span>
+            <select id="user-state"></select>
+          </label>
+          <label class="filter">
+            <span>小区</span>
+            <select id="user-cell"></select>
+          </label>
+          <label class="filter filter-size">
+            <span>每页</span>
+            <select id="user-page-size"></select>
           </label>
         </div>
-      </div>
-      <div id="actions" class="actions"></div>
-      <div id="action-result" class="action-result hidden"></div>
+        <div class="table-wrap">
+          <table id="users">
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>状态</th>
+                <th class="num">会话</th>
+                <th class="num">带宽</th>
+                <th class="num">PRB</th>
+                <th class="num">RSRP</th>
+                <th>小区</th>
+                <th>承载 Pod</th>
+                <th>IP</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="users-pager" class="pager"></div>
+      </section>
     </section>
 
-    <section class="panel" id="nodes-panel">
-      <div class="panel-head">
-        <h2>节点</h2>
-        <span id="nodes-meta" class="muted"></span>
-      </div>
-      <div id="nodes" class="node-grid"></div>
+    <section class="page hidden" data-page="modules">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>业务模块</h2>
+          <span id="modules-meta" class="muted"></span>
+        </div>
+        <div class="list-tools">
+          <label class="filter filter-search">
+            <span>搜索</span>
+            <input id="module-search" type="search" placeholder="模块、组件或节点">
+          </label>
+          <label class="filter">
+            <span>状态</span>
+            <select id="module-state">
+              <option value="">全部</option>
+              <option value="running">运行中</option>
+              <option value="degraded">异常 / 副本不足</option>
+              <option value="stopped">已停止</option>
+              <option value="not-deployed">未接入</option>
+            </select>
+          </label>
+        </div>
+        <div id="modules" class="module-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模块 CPU 申请分布</h2>
+          <span class="muted">各模块 Pod 的调度申请量，对比节点可分配总量</span>
+        </div>
+        <div id="module-chart" class="chart"></div>
+      </section>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>工作负载</h2>
-        <span class="muted">Amarisoft 组件与占位工作负载</span>
-      </div>
-      <div class="table-wrap">
-        <table id="deployments">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>命名空间</th>
-              <th class="num">副本</th>
-              <th class="num">CPU 申请/Pod</th>
-              <th class="num">CPU 限额/Pod</th>
-              <th class="num">CPU 申请总量</th>
-              <th>节点</th>
-              <th>镜像</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+    <section class="page hidden" data-page="resources">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>异构资源池</h2>
+          <span id="resources-meta" class="muted"></span>
+        </div>
+        <div id="resource-summary" class="metric-grid"></div>
+        <div id="resource-notes" class="muted"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>节点资源明细</h2>
+          <span class="muted">可调度剩余 = 可分配量 − 申请量；实际空闲 = 可分配量 − 实时使用量</span>
+        </div>
+        <div class="table-wrap">
+          <table id="resource-nodes">
+            <thead>
+              <tr>
+                <th>节点</th>
+                <th>状态</th>
+                <th class="num">CPU 可分配</th>
+                <th class="num">CPU 申请</th>
+                <th class="num">CPU 使用</th>
+                <th class="num">内存可分配</th>
+                <th class="num">内存申请</th>
+                <th class="num">内存使用</th>
+                <th>加速资源</th>
+                <th>网络</th>
+                <th>架构</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Pod</h2>
-        <span class="muted">申请量为调度依据，使用量为实时监控数据</span>
-      </div>
-      <div class="table-wrap">
-        <table id="pods">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>命名空间</th>
-              <th>节点</th>
-              <th>状态</th>
-              <th class="num">重启</th>
-              <th class="num">CPU 申请</th>
-              <th class="num">CPU 限额</th>
-              <th class="num">CPU 使用</th>
-              <th class="num">内存申请</th>
-              <th>QoS</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+    <section class="page hidden" data-page="instances">
+      <section class="panel" id="nodes-panel">
+        <div class="panel-head">
+          <h2>节点</h2>
+          <span id="nodes-meta" class="muted"></span>
+        </div>
+        <div id="nodes" class="node-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>工作负载</h2>
+          <span class="muted">Amarisoft 组件与占位工作负载</span>
+        </div>
+        <div class="list-tools">
+          <label class="filter filter-search">
+            <span>搜索</span>
+            <input id="deploy-search" type="search" placeholder="名称、节点或镜像">
+          </label>
+          <label class="filter">
+            <span>节点</span>
+            <select id="deploy-node"></select>
+          </label>
+          <label class="filter">
+            <span>命名空间</span>
+            <select id="deploy-namespace"></select>
+          </label>
+          <label class="filter">
+            <span>状态</span>
+            <select id="deploy-state">
+              <option value="">全部</option>
+              <option value="healthy">正常</option>
+              <option value="degraded">副本不足</option>
+              <option value="released">已回收</option>
+            </select>
+          </label>
+          <label class="filter filter-size">
+            <span>每页</span>
+            <select id="deploy-page-size"></select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="deployments">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>命名空间</th>
+                <th class="num">副本</th>
+                <th class="num">CPU 申请/Pod</th>
+                <th class="num">CPU 限额/Pod</th>
+                <th class="num">CPU 申请总量</th>
+                <th>节点</th>
+                <th>镜像</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="deployments-pager" class="pager"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Pod</h2>
+          <span class="muted">申请量为调度依据，使用量为实时监控数据</span>
+        </div>
+        <div class="list-tools">
+          <label class="filter filter-search">
+            <span>搜索</span>
+            <input id="pod-search" type="search" placeholder="名称、节点或工作负载">
+          </label>
+          <label class="filter">
+            <span>节点</span>
+            <select id="pod-node"></select>
+          </label>
+          <label class="filter">
+            <span>分类</span>
+            <select id="pod-namespace"></select>
+          </label>
+          <label class="filter">
+            <span>状态</span>
+            <select id="pod-status"></select>
+          </label>
+          <label class="filter filter-size">
+            <span>每页</span>
+            <select id="pod-page-size"></select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="pods">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>命名空间</th>
+                <th>节点</th>
+                <th>状态</th>
+                <th class="num">重启</th>
+                <th class="num">CPU 申请</th>
+                <th class="num">CPU 限额</th>
+                <th class="num">CPU 使用</th>
+                <th class="num">内存申请</th>
+                <th>QoS</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="pods-pager" class="pager"></div>
+      </section>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>执行记录</h2>
-        <span class="muted">来自审计日志，最近 40 条命令</span>
-      </div>
-      <div class="table-wrap">
-        <table id="log">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th class="num">返回码</th>
-              <th>命令</th>
-              <th>输出摘要</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+    <section class="page hidden" data-page="deploy">
+      <section class="panel hidden" id="apply-panel">
+        <div class="panel-head">
+          <h2>添加工作负载</h2>
+          <span class="muted">生成 YAML 后可编辑，再通过 kubectl apply -f - 应用</span>
+        </div>
+        <div class="apply-grid">
+          <label class="field">
+            <span>资源类型</span>
+            <select id="apply-kind">
+              <option value="Deployment">Deployment</option>
+              <option value="StatefulSet">StatefulSet</option>
+              <option value="DaemonSet">DaemonSet</option>
+              <option value="Pod">Pod</option>
+              <option value="Service">Service</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>命名空间</span>
+            <input id="apply-namespace" value="amari-d2000" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>名称</span>
+            <input id="apply-name" value="demo-edge" autocomplete="off">
+          </label>
+          <label class="field apply-image-field">
+            <span>镜像</span>
+            <input id="apply-image" value="registry.k8s.io/pause:3.9" autocomplete="off">
+          </label>
+          <label class="field apply-replicas-field">
+            <span>副本数</span>
+            <input id="apply-replicas" type="number" min="0" max="100" value="1">
+          </label>
+          <label class="field">
+            <span>容器端口 / Service 端口</span>
+            <input id="apply-port" type="number" min="1" max="65535" value="8080">
+          </label>
+          <label class="field">
+            <span>CPU request</span>
+            <input id="apply-cpu-request" value="100m" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>内存 request</span>
+            <input id="apply-mem-request" value="128Mi" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>CPU limit</span>
+            <input id="apply-cpu-limit" value="500m" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>内存 limit</span>
+            <input id="apply-mem-limit" value="512Mi" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>调度限制</span>
+            <select id="apply-schedule">
+              <option value="">不限制</option>
+              <option value="kb.local/name=d2000-edge">NTN-RAN（d2000-edge）</option>
+              <option value="kb.local/name=sdr">UE（sdr）</option>
+              <option value="kb.local/name=cloud">云端控制节点（cloud）</option>
+              <option value="kubernetes.io/arch=arm64">ARM64 主机 / 从机</option>
+              <option value="kubernetes.io/arch=amd64">AMD64 模拟环境</option>
+            </select>
+          </label>
+        </div>
+        <div class="apply-actions">
+          <button id="apply-generate" class="btn" type="button">生成 YAML</button>
+          <button id="apply-submit" class="btn btn-primary" type="button"
+            data-default-label="应用 YAML">应用 YAML</button>
+        </div>
+        <label class="yaml-editor">
+          <span>YAML 预览 / 编辑</span>
+          <textarea id="apply-yaml" spellcheck="false" placeholder="选择资源类型并填写参数后生成 YAML"></textarea>
+        </label>
+      </section>
+
+      <section class="panel hidden" id="apply-edge-note">
+        <div class="panel-head">
+          <h2>部署与 YAML</h2>
+        </div>
+        <p class="hint">
+          应用 YAML 需要在云主机控制台操作，边缘端只负责设备与状态类命令。
+          请打开云主机控制台（默认 8080 端口）后在此页生成并应用。
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模块标签约定</h2>
+          <span class="muted">按标签部署后，业务模块页会自动纳入该工作负载</span>
+        </div>
+        <pre class="code-block">metadata:
+  labels:
+    kb.local/module: ntn-ran   # ntn-ran | core | ue | ai-model | accelerator</pre>
+        <p class="hint">
+          AI 模型与加速模型没有内置组件名：打上对应标签，或把工作负载放进
+          <code>ai-model</code> / <code>accelerator</code> 命名空间即可出现在业务模块页。
+        </p>
+      </section>
+    </section>
+
+    <section class="page hidden" data-page="log">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>执行记录</h2>
+          <span id="log-meta" class="muted">来自审计日志，最近 200 条命令</span>
+        </div>
+        <div class="list-tools">
+          <label class="filter filter-search">
+            <span>搜索</span>
+            <input id="log-search" type="search" placeholder="命令或输出">
+          </label>
+          <label class="filter">
+            <span>结果</span>
+            <select id="log-result">
+              <option value="">全部</option>
+              <option value="ok">成功</option>
+              <option value="fail">失败</option>
+            </select>
+          </label>
+          <label class="filter">
+            <span>命令类型</span>
+            <select id="log-type">
+              <option value="">全部</option>
+              <option value="kubectl">Kubernetes</option>
+              <option value="amari">边缘命令</option>
+              <option value="other">其它</option>
+            </select>
+          </label>
+          <label class="filter filter-size">
+            <span>每页</span>
+            <select id="log-page-size"></select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="log">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th class="num">返回码</th>
+                <th>命令</th>
+                <th>输出摘要</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="log-pager" class="pager"></div>
+      </section>
+    </section>
+
+    <section class="page hidden" data-page="settings">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>运行信息</h2>
+          <span class="muted">来自 /api/health 与 /api/actions</span>
+        </div>
+        <div id="settings-runtime" class="settings-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>用户数据源</h2>
+          <span class="muted">kb.json</span>
+        </div>
+        <pre class="code-block">{
+  "user_source": "/var/lib/kb/users.json",
+  "ue_capacity": 64
+}</pre>
+        <p class="hint">
+          <code>user_source</code> 指向 AMF / SMF / 设备模型导出的 JSON：
+          <code>{"source": "...", "generated_at": "...", "capacity": 64, "users": [{"id": "ue-1", "state": "connected", "sessions": 1, "bandwidth_mbps": 10, "prb_percent": 5, "rsrp_dbm": -85, "cell": "cell-1", "pod": "amari-ue-...", "node": "sdr"}]}</code>。
+          没有配置或读取失败时，用户接入页显示「未接入用户数据源」，不会补零。
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>节点与网络标签</h2>
+          <span class="muted">kubectl label node ...</span>
+        </div>
+        <pre class="code-block">kb.local/name=d2000-edge          # 显示为 NTN-RAN
+kb.local/name=sdr                 # 显示为 UE
+kb.local/name=cloud               # 显示为 云端控制节点
+kb.local/net-bandwidth-mbps=1000  # 网络资源池容量
+nvidia.com/gpu=2                  # GPU / NPU / FPGA 等按扩展资源自动发现</pre>
+        <p class="hint">
+          只有集群真实上报的扩展资源才会出现在异构资源页；GPU / FPGA / NPU / DPU / ASIC
+          未上报时列在「未上报」提示里，不显示为 0。
+        </p>
+      </section>
     </section>
   </main>
 

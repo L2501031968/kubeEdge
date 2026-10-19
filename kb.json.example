@@ -5,6 +5,10 @@
   "sim": false,
   "dry_run": false,
   "allow_real_hardware": false,
+  "host_console": "http://127.0.0.1:8080",
+  "prepare_script": null,
+  "user_source": null,
+  "ue_capacity": 64,
   "agents": [
     { "name": "edge-sim", "url": "http://127.0.0.1:8081" }
   ]

@@ -1,6 +1,6 @@
 import unittest
 
-from kb.units import format_cpu, format_memory, parse_cpu, parse_memory
+from kb.units import format_cpu, format_memory, parse_cpu, parse_memory, parse_quantity
 
 
 class ParseCpuTest(unittest.TestCase):
@@ -46,6 +46,25 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(format_memory(1024 ** 3), "1Gi")
         self.assertEqual(format_memory(int(1.5 * 1024 ** 2)), "1.5Mi")
         self.assertEqual(format_memory(1000), "1000B")
+
+
+class ParseQuantityTest(unittest.TestCase):
+    def test_counts_and_milli(self):
+        self.assertEqual(parse_quantity("2"), 2.0)
+        self.assertEqual(parse_quantity("500m"), 0.5)
+        self.assertEqual(parse_quantity("1"), 1.0)
+
+    def test_binary_suffix(self):
+        self.assertEqual(parse_quantity("1Gi"), 1024 ** 3)
+        self.assertEqual(parse_quantity("2Mi"), 2 * 1024 ** 2)
+
+    def test_empty_values_are_zero(self):
+        self.assertEqual(parse_quantity(None), 0.0)
+        self.assertEqual(parse_quantity(""), 0.0)
+
+    def test_invalid_raises(self):
+        with self.assertRaises(ValueError):
+            parse_quantity("1 card")
 
 
 if __name__ == "__main__":

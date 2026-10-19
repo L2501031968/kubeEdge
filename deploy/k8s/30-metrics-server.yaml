@@ -177,6 +177,5 @@ spec:
   group: metrics.k8s.io
   groupPriorityMinimum: 100
   insecureSkipTLSVerify: true
-  priority: 100
   version: v1beta1
   versionPriority: 100

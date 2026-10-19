@@ -4,10 +4,21 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import fixtures
+from .domain import is_accelerator_key, node_alias
+from .health import service_check_status
 from .kube import Kubectl, KubectlError
-from .units import format_cpu, format_memory, parse_cpu, parse_memory
+from .units import format_cpu, format_memory, parse_cpu, parse_memory, parse_quantity
 
 EXPECTED_DEPLOYMENTS = ("amari-core", "amari-ims", "amari-ran", "amari-sat", "amari-ue")
+
+# 云主机基础运行时：与文档第 2 步的三条 systemctl is-active 一一对应。
+CLOUD_SERVICES = ("tailscaled", "containerd", "kubelet")
+CLOUD_SERVICE_LABELS = {
+    "tailscaled": "云主机 tailscaled 服务",
+    "containerd": "云主机 containerd 服务",
+    "kubelet": "云主机 kubelet 服务",
+}
+KUBEEDGE_NAMESPACE = "kubeedge"
 
 
 def _now() -> str:
@@ -16,6 +27,58 @@ def _now() -> str:
 
 def _labels(meta: Dict[str, Any]) -> Dict[str, str]:
     return meta.get("labels") or {}
+
+
+def _positive_float(value: Any) -> Optional[float]:
+    """标签里的数值（例如带宽）解析；缺失或非正数按未知处理。"""
+
+    if value is None:
+        return None
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def extended_quantities(resources: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    """从 allocatable / capacity / requests 中挑出非标准扩展资源键。
+
+    只保留 ``vendor/name`` 形式且能解析出数量的键（例如 ``nvidia.com/gpu``、
+    ``huawei.com/Ascend310``）。解析不了的键直接跳过，界面按“未上报”处理。
+    """
+
+    result: Dict[str, float] = {}
+    for key, value in (resources or {}).items():
+        text = str(key)
+        if not is_accelerator_key(text):
+            continue
+        try:
+            result[text] = parse_quantity(value)
+        except ValueError:
+            continue
+    return result
+
+
+def _merge_quantities(target: Dict[str, float], extra: Dict[str, float]) -> None:
+    for key, amount in extra.items():
+        target[key] = target.get(key, 0.0) + float(amount or 0)
+
+
+def pod_storage_request(pod: Dict[str, Any]) -> int:
+    total = 0
+    for container in _containers(pod):
+        requests = ((container.get("resources") or {}).get("requests")) or {}
+        total += parse_memory(requests.get("ephemeral-storage"))
+    return total
+
+
+def pod_extended_requests(pod: Dict[str, Any]) -> Dict[str, float]:
+    total: Dict[str, float] = {}
+    for container in _containers(pod):
+        requests = ((container.get("resources") or {}).get("requests")) or {}
+        _merge_quantities(total, extended_quantities(requests))
+    return total
 
 
 def node_display_name(name: str, labels: Dict[str, str]) -> str:
@@ -110,15 +173,22 @@ def pod_status(pod: Dict[str, Any]) -> Tuple[str, bool]:
     return phase, ready
 
 
-def pod_owner_deployment(pod: Dict[str, Any]) -> Optional[str]:
+def pod_owner(pod: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Pod 的控制器信息：ReplicaSet 归并到 Deployment，其余保留原始类型。"""
+
     for owner in (pod.get("metadata") or {}).get("ownerReferences") or []:
         kind = owner.get("kind")
         name = owner.get("name") or ""
         if kind == "ReplicaSet" and "-" in name:
-            return name.rsplit("-", 1)[0]
+            return {"kind": "Deployment", "name": name.rsplit("-", 1)[0]}
         if kind in ("StatefulSet", "DaemonSet"):
-            return name
+            return {"kind": kind, "name": name}
     return None
+
+
+def pod_owner_deployment(pod: Dict[str, Any]) -> Optional[str]:
+    owner = pod_owner(pod)
+    return owner["name"] if owner else None
 
 
 def pod_restarts(pod: Dict[str, Any]) -> int:
@@ -189,6 +259,51 @@ def _deployment_images(deployment: Dict[str, Any]) -> List[str]:
     return images
 
 
+def host_service_checks(raw: Dict[str, Any], mode: str) -> List[Dict[str, str]]:
+    """云主机基础运行时检查，对应文档里的三条 ``systemctl is-active``。"""
+
+    services = raw.get("host_services") or {}
+    checks: List[Dict[str, str]] = []
+    for service in CLOUD_SERVICES:
+        reported = services.get(service)
+        demo = mode == "demo" and not reported
+        state = str(reported or ("active" if demo else "unknown"))
+        checks.append({
+            "id": "service-" + service,
+            "title": CLOUD_SERVICE_LABELS[service],
+            "status": "ok" if demo else service_check_status(state),
+            "detail": "active（演示数据）" if demo else state,
+        })
+    return checks
+
+
+def kubeedge_cloud_check(pods: List[Dict[str, Any]]) -> Dict[str, str]:
+    """检查 kubeedge 命名空间里的云侧组件是否全部就绪。"""
+
+    cloud_pods = [pod for pod in pods if pod.get("namespace") == KUBEEDGE_NAMESPACE]
+    ready = [pod for pod in cloud_pods if pod.get("ready")]
+    if not cloud_pods:
+        return {
+            "id": "kubeedge-cloud",
+            "title": "KubeEdge 云端组件",
+            "status": "fail",
+            "detail": "未发现 kubeedge 命名空间中的 Pod（云侧组件未部署或命名空间不同）",
+        }
+    if len(ready) == len(cloud_pods):
+        return {
+            "id": "kubeedge-cloud",
+            "title": "KubeEdge 云端组件",
+            "status": "ok",
+            "detail": "%d/%d 个云侧组件 Ready" % (len(ready), len(cloud_pods)),
+        }
+    return {
+        "id": "kubeedge-cloud",
+        "title": "KubeEdge 云端组件",
+        "status": "fail",
+        "detail": "%d/%d 个云侧组件 Ready，请查看 kubectl get pods -n kubeedge" % (len(ready), len(cloud_pods)),
+    }
+
+
 def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
     error = raw.get("error")
     version_meta = {
@@ -203,7 +318,7 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
             "title": "Kubernetes 集群",
             "status": "fail",
             "detail": str(error),
-        }]
+        }] + host_service_checks(raw, mode)
         return {
             "kind": "host",
             "generated_at": _now(),
@@ -232,22 +347,35 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
         status = node.get("status") or {}
         name = meta.get("name") or ""
         labels = _labels(meta)
+        allocatable = status.get("allocatable") or {}
+        capacity = status.get("capacity") or {}
         usage = top_nodes.get(name) or {}
         info = {
             "name": name,
             "display_name": node_display_name(name, labels),
+            "alias": node_alias(name, labels),
             "roles": node_roles(labels),
             "ready": node_ready(node),
             "taints": node_taints(node),
             "labels": labels,
-            "cpu_allocatable_cores": parse_cpu((status.get("allocatable") or {}).get("cpu")),
-            "mem_allocatable_bytes": parse_memory((status.get("allocatable") or {}).get("memory")),
+            "addresses": [
+                {"type": item.get("type"), "address": item.get("address")}
+                for item in status.get("addresses") or []
+            ],
+            "cpu_allocatable_cores": parse_cpu(allocatable.get("cpu")),
+            "mem_allocatable_bytes": parse_memory(allocatable.get("memory")),
+            "storage_allocatable_bytes": parse_memory(allocatable.get("ephemeral-storage")),
+            "extended_allocatable": extended_quantities(allocatable),
+            "extended_capacity": extended_quantities(capacity),
+            "extended_requested": {},
+            "network_bandwidth_mbps": _positive_float(labels.get("kb.local/net-bandwidth-mbps")),
             "cpu_requested_cores": 0.0,
             "cpu_limited_cores": 0.0,
             "cpu_used_cores": usage.get("cpu_cores"),
             "mem_requested_bytes": 0,
             "mem_limited_bytes": 0,
             "mem_used_bytes": usage.get("mem_bytes"),
+            "storage_requested_bytes": 0,
             "pods": 0,
         }
         node_infos.append(info)
@@ -259,18 +387,27 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
         spec = pod.get("spec") or {}
         namespace = meta.get("namespace") or "default"
         name = meta.get("name") or ""
+        labels = _labels(meta)
         node_name = spec.get("nodeName") or ""
         cpu_request, cpu_limit, mem_request, mem_limit = pod_resources(pod)
+        storage_request = pod_storage_request(pod)
+        extended_request = pod_extended_requests(pod)
         usage = top_pods.get((namespace, name)) or {}
         status_text, ready = pod_status(pod)
-        deployment = pod_owner_deployment(pod)
+        owner = pod_owner(pod)
+        deployment = owner["name"] if owner else None
         display_node = node_by_name.get(node_name, {}).get("display_name") or node_name
+        alias_node = node_by_name.get(node_name, {}).get("alias") or node_alias(node_name)
         pod_infos.append({
             "namespace": namespace,
             "name": name,
+            "labels": labels,
             "node": node_name,
             "display_node": display_node,
+            "node_alias": alias_node,
             "deployment": deployment,
+            "owner_kind": (owner or {}).get("kind"),
+            "owner_name": (owner or {}).get("name"),
             "status": status_text,
             "ready": ready,
             "restarts": pod_restarts(pod),
@@ -280,6 +417,8 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
             "mem_request_bytes": mem_request,
             "mem_limit_bytes": mem_limit,
             "mem_used_bytes": usage.get("mem_bytes"),
+            "storage_request_bytes": storage_request,
+            "extended_requests": extended_request,
             "qos": pod_qos(cpu_request, cpu_limit, mem_request, mem_limit),
             "image": (_containers(pod)[0].get("image") if _containers(pod) else None),
         })
@@ -291,6 +430,8 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
             node_info["cpu_limited_cores"] += cpu_limit
             node_info["mem_requested_bytes"] += mem_request
             node_info["mem_limited_bytes"] += mem_limit
+            node_info["storage_requested_bytes"] += storage_request
+            _merge_quantities(node_info["extended_requested"], extended_request)
 
     deployment_infos: List[Dict[str, Any]] = []
     for deployment in deployments_raw:
@@ -301,10 +442,13 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
         name = meta.get("name") or ""
         replicas = int(spec.get("replicas") or 0)
         cpu_request, cpu_limit, mem_request, mem_limit = _deployment_resources(deployment)
+        template = (spec.get("template") or {})
+        template_meta = template.get("metadata") or {}
         related = [p for p in pod_infos if p["namespace"] == namespace and p["deployment"] == name]
         deployment_infos.append({
             "namespace": namespace,
             "name": name,
+            "labels": template_meta.get("labels") or {},
             "replicas": replicas,
             "ready": int(status.get("readyReplicas") or 0),
             "available": int(status.get("availableReplicas") or 0),
@@ -344,6 +488,8 @@ def build_snapshot(raw: Dict[str, Any], mode: str) -> Dict[str, Any]:
         "status": "ok",
         "detail": "服务端 %s" % (raw.get("server_version") or "未知版本"),
     })
+    checks.extend(host_service_checks(raw, mode))
+    checks.append(kubeedge_cloud_check(pod_infos))
     checks.append({
         "id": "nodes",
         "title": "节点就绪",
@@ -409,13 +555,16 @@ class Collector:
             return build_snapshot(fixtures.demo_raw(), "demo")
         return self._collect_live()
 
-    def _collect_live(self) -> Dict[str, Any]:
-        if self.kubectl is None:
-            return build_snapshot({"error": "未配置 kubectl"}, "live")
-        runner = self.kubectl.runner
-        if runner.which("kubectl") is None:
-            return build_snapshot({"error": "未找到 kubectl，请先安装并配置 kubeconfig"}, "live")
+    def _service_state(self, runner: Any, service: str) -> str:
+        """读取本机 systemd 服务状态；不经过 shell，超时后按 unknown 处理。"""
 
+        if getattr(runner, "dry_run", False):
+            return "unknown"
+        result = runner.run(["systemctl", "is-active", service], timeout=5)
+        output = result.stdout.strip() or result.stderr.strip() or "unknown"
+        return output.splitlines()[0].strip()
+
+    def _collect_live(self) -> Dict[str, Any]:
         raw: Dict[str, Any] = {
             "error": None,
             "metrics_available": False,
@@ -423,6 +572,19 @@ class Collector:
             "top_nodes": None,
             "top_pods": None,
         }
+        runner = self.kubectl.runner if self.kubectl is not None else None
+        if runner is not None:
+            raw["host_services"] = {
+                service: self._service_state(runner, service)
+                for service in CLOUD_SERVICES
+            }
+
+        if self.kubectl is None:
+            raw["error"] = "未配置 kubectl"
+            return build_snapshot(raw, "live")
+        if runner.which("kubectl") is None:
+            raw["error"] = "未找到 kubectl，请先安装并配置 kubeconfig"
+            return build_snapshot(raw, "live")
 
         try:
             version = self.kubectl.get_json(["version"], timeout=15)

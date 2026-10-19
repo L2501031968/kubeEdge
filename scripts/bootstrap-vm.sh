@@ -231,7 +231,7 @@ if [ "$NODE_COUNT" = "3" ]; then
   kubectl label node "$EDGE_NODE" "kb.local/name=d2000-edge" "kb.local/role=edge" --overwrite > /dev/null
   kubectl label node "$SDR_NODE" "kb.local/name=sdr" "kb.local/role=edge" --overwrite > /dev/null
   kubectl taint node "$EDGE_NODE" "$SDR_NODE" kb.local/edge=true:NoSchedule --overwrite > /dev/null
-  echo "云侧节点: $CONTROL_NODE"
+  echo "云端控制节点: $CONTROL_NODE"
   echo "边缘节点: $EDGE_NODE（基站） / $SDR_NODE（UE）"
 else
   echo "单节点: $CONTROL_NODE（所有组件都调度到这一台机器）"
@@ -312,7 +312,7 @@ $(printf '\033[1;32m环境准备完成\033[0m')
      KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
 
   3. 浏览器打开 http://${VM_IP:-<虚拟机IP>}:8080
-     主机页面上的边缘按钮会转发到 8081 的模拟边缘控制台。
+     把页面上的「执行位置」切到 edge-sim，会新开标签页跳到 8081 的模拟边缘控制台。
 
 查看集群： kubectl get nodes -o wide
 自检命令： kubectl get pods -A | grep amari; amari-ue-status --once

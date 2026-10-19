@@ -24,6 +24,12 @@ class Config:
     dry_run: bool = False
     sim: bool = False
     allow_real_hardware: bool = False
+    host_console: Optional[str] = None
+    prepare_script: Optional[str] = None
+    # 用户接入数据源：指向外部适配器导出的 JSON（AMF/SMF/设备模型均可），
+    # 缺失或读取失败时界面显示“未接入用户数据源”，不会编造数据。
+    user_source: Optional[str] = None
+    ue_capacity: int = 64
     audit_log: Path = field(default_factory=lambda: Path.home() / ".kb" / "audit.jsonl")
     agents: List[AgentTarget] = field(default_factory=list)
     components: List[Dict[str, str]] = field(default_factory=lambda: [dict(item) for item in DEFAULT_COMPONENTS])
@@ -36,9 +42,26 @@ class Config:
             data = json.loads(cfg_path.read_text(encoding="utf-8"))
 
         cfg = cls()
-        for key in ("role", "listen", "kubeconfig", "context", "demo", "dry_run", "sim", "allow_real_hardware"):
+        for key in (
+            "role",
+            "listen",
+            "kubeconfig",
+            "context",
+            "demo",
+            "dry_run",
+            "sim",
+            "allow_real_hardware",
+            "host_console",
+            "prepare_script",
+            "user_source",
+        ):
             if key in data:
                 setattr(cfg, key, data[key])
+        try:
+            if data.get("ue_capacity") is not None:
+                cfg.ue_capacity = int(data["ue_capacity"])
+        except (TypeError, ValueError):
+            pass
         if "audit_log" in data:
             cfg.audit_log = Path(data["audit_log"]).expanduser()
         cfg.agents = [AgentTarget(**item) for item in data.get("agents", [])]

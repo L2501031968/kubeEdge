@@ -8,27 +8,34 @@
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
+
+from .health import select_container_tool
+from .prepare import resolve_prepare_script
 
 
 DEFAULT_COMPONENTS: List[Dict[str, str]] = [
     {"name": "amari-core", "namespace": "amari-d2000", "label": "核心网"},
-    {"name": "amari-ims", "namespace": "amari-d2000", "label": "IMS"},
+    {"name": "amari-ims", "namespace": "amari-d2000", "label": "IMS服务"},
     {"name": "amari-ran", "namespace": "amari-d2000", "label": "基站"},
     {"name": "amari-sat", "namespace": "amari-d2000", "label": "卫星"},
     {"name": "amari-ue", "namespace": "amari-edge", "label": "UE"},
 ]
 
 GROUPS: Sequence[Dict[str, str]] = (
-    {"id": "flow", "title": "一键流程"},
+    {"id": "prep", "title": "环境准备"},
+    {"id": "flow", "title": "云侧资源"},
     {"id": "scale", "title": "组件与副本"},
     {"id": "device", "title": "边缘设备"},
     {"id": "maint", "title": "维护"},
 )
 
 STARTUP_ORDER = ("amari-core", "amari-ims", "amari-ran", "amari-sat", "amari-ue")
+U3_STARTUP_ORDER = ("amari-core", "amari-ims", "amari-ran", "amari-sat")
 SHUTDOWN_ORDER = ("amari-ue", "amari-sat", "amari-ran", "amari-ims", "amari-core")
 
 
@@ -63,6 +70,7 @@ class Step:
     timeout: float = 20.0
     optional: bool = False
     simulated: bool = False
+    cwd: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"argv": list(self.argv), "note": self.note}
@@ -70,6 +78,8 @@ class Step:
             payload["optional"] = True
         if self.simulated:
             payload["simulated"] = True
+        if self.cwd:
+            payload["cwd"] = self.cwd
         return payload
 
 
@@ -174,12 +184,36 @@ def _plan_startup(context: Dict[str, Any]) -> List[Step]:
         if name == "amari-ue":
             step.note = "最后启动 UE 容器（启动前请确认 UE 已下电）"
         steps.append(step)
-    steps.append(Step(
-        argv=_kubectl(cfg, ["get", "deployments", "-n", "amari-d2000", "-o", "wide"]),
-        note="确认核心网组件副本数",
-        optional=True,
-    ))
     return steps
+
+
+def _plan_start_u3(context: Dict[str, Any]) -> List[Step]:
+    cfg = context["cfg"]
+    return [
+        _scale_step(cfg, _require_component(context, name), 1)
+        for name in U3_STARTUP_ORDER
+    ]
+
+
+def _plan_start_named(context: Dict[str, Any], name: str) -> List[Step]:
+    cfg = context["cfg"]
+    return [_scale_step(cfg, _require_component(context, name), 1)]
+
+
+def _plan_start_core(context: Dict[str, Any]) -> List[Step]:
+    return _plan_start_named(context, "amari-core")
+
+
+def _plan_start_ims(context: Dict[str, Any]) -> List[Step]:
+    return _plan_start_named(context, "amari-ims")
+
+
+def _plan_start_ran(context: Dict[str, Any]) -> List[Step]:
+    return _plan_start_named(context, "amari-ran")
+
+
+def _plan_start_sat(context: Dict[str, Any]) -> List[Step]:
+    return _plan_start_named(context, "amari-sat")
 
 
 def _plan_shutdown(context: Dict[str, Any]) -> List[Step]:
@@ -190,12 +224,6 @@ def _plan_shutdown(context: Dict[str, Any]) -> List[Step]:
         if name == "amari-ue":
             step.note = "先停 UE 容器，再停基站侧组件"
         steps.append(step)
-    for namespace in ("amari-d2000", "amari-edge"):
-        steps.append(Step(
-            argv=_kubectl(cfg, ["get", "pods", "-n", namespace, "-o", "wide"]),
-            note="确认 %s 的 Pod 已回收" % namespace,
-            optional=True,
-        ))
     return steps
 
 
@@ -297,7 +325,50 @@ def _plan_check_services(context: Dict[str, Any]) -> List[Step]:
         timeout=8.0,
         optional=True,
     ))
+    steps.append(Step(
+        argv=_edge_argv(context, ["fuser", "-v", "/dev/sdr0"], need_sudo=True),
+        note="查看 /dev/sdr0 是否被占用",
+        timeout=8.0,
+        optional=True,
+    ))
     return steps
+
+
+def _is_root() -> bool:
+    geteuid = getattr(os, "geteuid", None)
+    return bool(geteuid and geteuid() == 0)
+
+
+def _plan_prepare(context: Dict[str, Any]) -> List[Step]:
+    """在页面内执行本机准备脚本，不再要求用户回终端敲 sudo。"""
+
+    cfg = context["cfg"]
+    if getattr(cfg, "sim", False) or getattr(cfg, "demo", False):
+        return [Step(
+            argv=["echo", "模拟环境：跳过真实准备脚本"],
+            note="模拟环境不需要执行 amari-host-prepare.sh / amari-ue-prepare.sh",
+            timeout=10.0,
+            simulated=True,
+        )]
+
+    script = resolve_prepare_script(getattr(cfg, "prepare_script", None))
+    if script.source == "configured-missing":
+        raise ActionRejected("kb.json 里配置的 prepare_script 不存在：%s" % script.path)
+    if not script.found or not script.path:
+        raise ActionRejected(
+            "未找到环境准备脚本。请把 amari-host-prepare.sh / amari-ue-prepare.sh "
+            "放到文档约定的目录，或在 kb.json 里用 prepare_script 指定绝对路径。"
+        )
+
+    argv = ["bash", script.path]
+    if not _is_root():
+        argv = ["sudo", "-n"] + argv
+    return [Step(
+        argv=argv,
+        note="执行本机环境准备脚本 %s（需要 sudo 免密）" % Path(script.path).name,
+        timeout=1800.0,
+        cwd=str(Path(script.path).parent),
+    )]
 
 
 def _mode_param() -> ActionParam:
@@ -353,11 +424,26 @@ def _plan_network_mode(context: Dict[str, Any]) -> List[Step]:
 
 
 def _plan_containers(context: Dict[str, Any]) -> List[Step]:
+    cfg = context["cfg"]
+    if getattr(cfg, "sim", False) or getattr(cfg, "demo", False):
+        return [Step(
+            argv=["echo", "模拟环境：不查询真实边缘容器"],
+            note="模拟环境跳过容器查询",
+            timeout=10.0,
+            simulated=True,
+        )]
+
+    tool = select_container_tool(context["runner"])
+    if tool is None:
+        raise ActionRejected(
+            "未找到 nerdctl、crictl 或 ctr。该工具只用于页面诊断，不影响 KubeEdge "
+            "的运行；如需在页面列出边缘容器，请安装其中任意一个。"
+        )
+
     return [Step(
-        argv=_edge_argv(context, ["nerdctl", "--namespace", "k8s.io", "ps"]),
-        note="查看边缘节点容器",
+        argv=list(tool["argv"]),
+        note="使用 %s 查看边缘节点容器" % tool["name"],
         timeout=20.0,
-        optional=True,
     )]
 
 
@@ -402,20 +488,74 @@ def _component_param(default: str = "amari-core") -> ActionParam:
 
 ACTIONS: Sequence[ActionSpec] = (
     ActionSpec(
+        id="prepare_node",
+        title="一键执行本机环境准备",
+        group="prep",
+        roles=("edge",),
+        description=(
+            "在页面里执行 U3 的 amari-host-prepare.sh 或 sdr 的 amari-ue-prepare.sh，"
+            "以脚本所在目录为工作目录；脚本路径可用 kb.json 的 prepare_script 指定。"
+        ),
+        planner=_plan_prepare,
+        confirm=True,
+        requires_hardware=True,
+    ),
+    ActionSpec(
         id="startup_stack",
-        title="一键启动（云侧流程）",
+        title="启动完整业务链路",
         group="flow",
         roles=("host",),
-        description="按 core → ims → ran → sat → ue 的顺序把副本数拉起；UE 需在边缘侧先下电。",
+        description="按 core → ims → ran → sat → ue 顺序启动。执行前请确认 UE 已下电；页面会等待真实副本和 Pod 就绪。",
         planner=_plan_startup,
         confirm=True,
     ),
     ActionSpec(
-        id="shutdown_stack",
-        title="一键关机（云侧流程）",
+        id="startup_u3",
+        title="启动 U3 四个组件",
         group="flow",
         roles=("host",),
-        description="按 ue → sat → ran → ims → core 的顺序把副本数归零，最后确认 Pod 已回收。",
+        description="按 core → ims → ran → sat 顺序启动 U3 侧组件，不启动 UE。",
+        planner=_plan_start_u3,
+        confirm=True,
+    ),
+    ActionSpec(
+        id="start_core",
+        title="启动核心网 Core",
+        group="flow",
+        roles=("host",),
+        description="仅把 amari-core 副本数设为 1，适合按需单独启动。",
+        planner=_plan_start_core,
+    ),
+    ActionSpec(
+        id="start_ims",
+        title="启动 IMS服务",
+        group="flow",
+        roles=("host",),
+        description="仅把 amari-ims 副本数设为 1，适合按需单独启动。",
+        planner=_plan_start_ims,
+    ),
+    ActionSpec(
+        id="start_ran",
+        title="启动基站 RAN",
+        group="flow",
+        roles=("host",),
+        description="仅把 amari-ran 副本数设为 1，适合按需单独启动。",
+        planner=_plan_start_ran,
+    ),
+    ActionSpec(
+        id="start_sat",
+        title="启动卫星 SAT",
+        group="flow",
+        roles=("host",),
+        description="仅把 amari-sat 副本数设为 1，适合按需单独启动。",
+        planner=_plan_start_sat,
+    ),
+    ActionSpec(
+        id="shutdown_stack",
+        title="回收业务组件",
+        group="flow",
+        roles=("host",),
+        description="云主机保持常驻；按 ue → sat → ran → ims → core 将业务组件副本归零，并等待 Pod 回收完成。",
         planner=_plan_shutdown,
         confirm=True,
     ),
@@ -454,9 +594,9 @@ ACTIONS: Sequence[ActionSpec] = (
                 label="目标节点",
                 kind="choice",
                 choices=[
-                    {"value": "d2000-edge", "label": "d2000-edge（基站）"},
-                    {"value": "sdr", "label": "sdr（UE）"},
-                    {"value": "cloud", "label": "cloud（云侧）"},
+                    {"value": "d2000-edge", "label": "NTN-RAN（d2000-edge）"},
+                    {"value": "sdr", "label": "UE（sdr）"},
+                    {"value": "cloud", "label": "云端控制节点（cloud）"},
                 ],
                 default="d2000-edge",
             ),
@@ -524,7 +664,7 @@ ACTIONS: Sequence[ActionSpec] = (
         title="列出边缘容器",
         group="maint",
         roles=("edge",),
-        description="nerdctl --namespace k8s.io ps。",
+        description="自动选择 nerdctl / crictl / ctr 查询边缘容器；属于可选诊断。",
         planner=_plan_containers,
     ),
     ActionSpec(
@@ -646,6 +786,7 @@ def run_action(
     merged = _coerce_params(spec, params)
     context = {
         "cfg": cfg,
+        "runner": runner,
         "params": merged,
         "components": list(components or DEFAULT_COMPONENTS),
     }
@@ -655,10 +796,14 @@ def run_action(
     results: List[Dict[str, Any]] = []
     ok = True
     for step in steps:
-        result = runner.run(step.argv, timeout=step.timeout)
+        result = runner.run(step.argv, timeout=step.timeout, cwd=step.cwd)
         payload = dict(result.to_dict())
         payload["note"] = step.note or " ".join(step.argv)
         payload["optional"] = step.optional
+        if step.cwd:
+            payload["cwd"] = step.cwd
+        if step.simulated:
+            payload["simulated"] = True
         payload["ok"] = result.ok
         results.append(payload)
         if not result.ok and not step.optional:
@@ -675,4 +820,46 @@ def run_action(
         "finished_at": _now(),
         "dry_run": bool(getattr(runner, "dry_run", False)),
         "steps": results,
+    }
+
+
+MAX_APPLY_BYTES = 256 * 1024
+
+
+def apply_yaml(cfg: Any, runner: Any, text: Any) -> Dict[str, Any]:
+    """通过 stdin 执行 kubectl apply -f -，避免把 YAML 写入命令行和审计记录。"""
+
+    if getattr(cfg, "role", "host") != "host":
+        raise ActionRejected("只有云主机控制台可以应用 Kubernetes YAML")
+    if not isinstance(text, str):
+        raise ActionError("YAML 内容必须是字符串")
+    if not text.strip():
+        raise ActionError("YAML 内容不能为空")
+    if "\x00" in text:
+        raise ActionError("YAML 内容不能包含 NUL 字符")
+    encoded = text.encode("utf-8")
+    if len(encoded) > MAX_APPLY_BYTES:
+        raise ActionError("YAML 内容不能超过 %d KiB" % (MAX_APPLY_BYTES // 1024))
+
+    started = _now()
+    step = Step(
+        argv=_kubectl(cfg, ["apply", "-f", "-"]),
+        note="应用用户编辑的 Kubernetes YAML",
+        timeout=90.0,
+    )
+    result = runner.run(step.argv, timeout=step.timeout, input_text=text)
+    payload = dict(result.to_dict())
+    payload["note"] = step.note
+    payload["optional"] = False
+    payload["ok"] = result.ok
+    return {
+        "id": "apply_yaml",
+        "title": "应用工作负载 YAML",
+        "params": {},
+        "ok": result.ok,
+        "aborted": False,
+        "started_at": started,
+        "finished_at": _now(),
+        "dry_run": bool(getattr(runner, "dry_run", False)),
+        "steps": [payload],
     }

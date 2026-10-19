@@ -5,6 +5,7 @@ import json
 import sys
 
 from .actions import catalog
+from .agent import EdgeAgent
 from .config import Config
 from .discovery import Collector
 from .kube import Kubectl
@@ -49,10 +50,17 @@ def main(argv=None) -> int:
     runner = CommandRunner(dry_run=cfg.dry_run or cfg.demo, audit_path=cfg.audit_log)
 
     if args.print_discovery:
-        kubectl = None
-        if cfg.role == "host" and not cfg.demo:
-            kubectl = Kubectl(runner, kubeconfig=cfg.kubeconfig, context=cfg.context)
-        snapshot = Collector(kubectl=kubectl, demo=cfg.demo).collect()
+        if cfg.role == "edge":
+            snapshot = EdgeAgent(
+                runner,
+                sim=cfg.sim or cfg.demo,
+                prepare_script=cfg.prepare_script,
+            ).collect()
+        else:
+            kubectl = None
+            if not cfg.demo:
+                kubectl = Kubectl(runner, kubeconfig=cfg.kubeconfig, context=cfg.context)
+            snapshot = Collector(kubectl=kubectl, demo=cfg.demo).collect()
         json.dump(snapshot, sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
         return 0

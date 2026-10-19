@@ -11,10 +11,12 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import parse_qs, urlparse
 
-from ..actions import ActionError, UnknownAction, catalog, get_action, run_action
+from .. import fixtures
+from ..actions import ActionError, UnknownAction, apply_yaml, catalog, get_action, run_action
 from ..agent import EdgeAgent
 from ..config import Config
 from ..discovery import Collector
+from ..domain import build_domain
 from ..kube import Kubectl
 from ..runner import CommandRunner
 
@@ -55,7 +57,11 @@ class AppState:
         self.cfg = cfg
         self.runner = runner
         if cfg.role == "edge":
-            self.agent: Optional[EdgeAgent] = EdgeAgent(runner, sim=cfg.sim or cfg.demo)
+            self.agent: Optional[EdgeAgent] = EdgeAgent(
+                runner,
+                sim=cfg.sim or cfg.demo,
+                prepare_script=cfg.prepare_script,
+            )
             self.collector: Optional[Collector] = None
         else:
             self.agent = None
@@ -63,6 +69,7 @@ class AppState:
             self.collector = Collector(kubectl=kubectl, demo=cfg.demo)
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_at = 0.0
+        self._user_source_error: Optional[str] = None
         self._lock = threading.Lock()
 
     def invalidate(self) -> None:
@@ -81,13 +88,59 @@ class AppState:
                 data = self.collector.collect()
             else:
                 data = {"kind": "host", "error": "未配置数据源", "generated_at": _now()}
+            if data.get("kind") == "host":
+                self._attach_domain(data)
             self._cache = data
             self._cache_at = current
             return data
 
+    def _user_source(self) -> Optional[Dict[str, Any]]:
+        """读取用户接入数据源；演示模式用内置样例，真实模式读 kb.json 里的 JSON。"""
+
+        self._user_source_error = None
+        if self.cfg.demo:
+            return fixtures.demo_users()
+        path = self.cfg.user_source
+        if not path:
+            return None
+        source_path = Path(str(path)).expanduser()
+        try:
+            payload = json.loads(source_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            self._user_source_error = "无法读取 user_source %s：%s" % (source_path, exc)
+            return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            self._user_source_error = "user_source %s 不是合法 JSON：%s" % (source_path, exc)
+            return None
+        if not isinstance(payload, dict):
+            self._user_source_error = "user_source %s 需要是 JSON 对象" % source_path
+            return None
+        return payload
+
+    def _attach_domain(self, data: Dict[str, Any]) -> None:
+        try:
+            users_source = self._user_source()
+            domain = build_domain(
+                data.get("nodes") or [],
+                data.get("pods") or [],
+                data.get("deployments") or [],
+                users_source,
+                self.cfg.ue_capacity,
+                data.get("mode") or ("demo" if self.cfg.demo else "live"),
+            )
+            if self._user_source_error:
+                domain["user_source_error"] = self._user_source_error
+            data["domain"] = domain
+        except Exception as exc:  # 业务分面失败不影响原有集群视图
+            data["domain"] = None
+            data["domain_error"] = "业务视图聚合失败：%s" % exc
+
     def action_catalog(self) -> Dict[str, Any]:
         data = catalog(self.cfg)
         data["agents"] = self.agents()
+        data["host_console"] = self.cfg.host_console
+        data["user_source"] = self.cfg.user_source
+        data["ue_capacity"] = self.cfg.ue_capacity
         data["mode"] = "demo" if self.cfg.demo else ("sim" if self.cfg.sim else "live")
         data["dry_run"] = bool(self.runner.dry_run)
         return data
@@ -134,6 +187,11 @@ class AppState:
         data = run_action(self.cfg, self.runner, action_id, params, components=self.cfg.components)
         data["forwarded_to"] = None
         data["local"] = True
+        self.invalidate()
+        return data
+
+    def apply_yaml(self, text: Any) -> Dict[str, Any]:
+        data = apply_yaml(self.cfg, self.runner, text)
         self.invalidate()
         return data
 
@@ -203,17 +261,31 @@ def make_handler(state: AppState):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            if path != "/api/run":
+            if path not in ("/api/run", "/api/apply"):
                 self._write_json({"error": "未知接口：%s" % path}, status=404)
                 return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
+                if length > 512 * 1024:
+                    raise ValueError("请求体超过 512 KiB 限制")
                 raw = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(raw.decode("utf-8") or "{}")
                 if not isinstance(payload, dict):
                     raise ValueError("请求体需要是 JSON 对象")
             except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
                 self._write_json({"error": "请求体解析失败：%s" % exc}, status=400)
+                return
+
+            if path == "/api/apply":
+                try:
+                    data = state.apply_yaml(payload.get("yaml"))
+                except ActionError as exc:
+                    self._write_json({"error": str(exc), "id": "apply_yaml"}, status=exc.status)
+                    return
+                except Exception as exc:
+                    self._write_json({"error": "应用 YAML 失败：%s" % exc, "id": "apply_yaml"}, status=500)
+                    return
+                self._write_json(data)
                 return
 
             action_id = str(payload.get("id") or "")

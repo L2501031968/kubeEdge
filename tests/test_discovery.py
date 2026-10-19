@@ -1,7 +1,13 @@
 import unittest
 
 from kb import fixtures
-from kb.discovery import build_snapshot, parse_top_nodes, parse_top_pods
+from kb.discovery import (
+    build_snapshot,
+    host_service_checks,
+    kubeedge_cloud_check,
+    parse_top_nodes,
+    parse_top_pods,
+)
 
 
 class BuildSnapshotTest(unittest.TestCase):
@@ -45,6 +51,9 @@ class BuildSnapshotTest(unittest.TestCase):
         checks = {check["id"]: check for check in self.snapshot["checks"]}
         for check_id in ("kubectl", "cluster", "nodes", "metrics", "device-crd", "amari"):
             self.assertIn(check_id, checks)
+        for service in ("tailscaled", "containerd", "kubelet"):
+            self.assertEqual(checks["service-" + service]["status"], "ok")
+        self.assertEqual(checks["kubeedge-cloud"]["status"], "fail")
         self.assertEqual(checks["metrics"]["status"], "ok")
         self.assertEqual(checks["amari"]["status"], "ok")
         self.assertEqual(self.snapshot["kubeedge"]["edge_nodes"], ["d2000-edge", "sdr"])
@@ -54,6 +63,57 @@ class BuildSnapshotTest(unittest.TestCase):
         self.assertEqual(snapshot["checks"][0]["status"], "fail")
         self.assertEqual(snapshot["nodes"], [])
         self.assertFalse(snapshot["kubernetes"]["reachable"])
+
+
+class HostServiceCheckTest(unittest.TestCase):
+    def test_live_states_map_to_three_colors(self):
+        raw = dict(fixtures.demo_raw())
+        raw["context"] = "real-cloud"
+        raw["host_services"] = {
+            "tailscaled": "active",
+            "containerd": "failed",
+            "kubelet": "activating",
+        }
+        snapshot = build_snapshot(raw, "live")
+        checks = {check["id"]: check for check in snapshot["checks"]}
+        self.assertEqual(checks["service-tailscaled"]["status"], "ok")
+        self.assertEqual(checks["service-containerd"]["status"], "fail")
+        self.assertEqual(checks["service-kubelet"]["status"], "warn")
+
+    def test_unknown_state_is_warn(self):
+        checks = {check["id"]: check for check in host_service_checks({}, "live")}
+        self.assertEqual(len(checks), 3)
+        self.assertTrue(all(check["status"] == "warn" for check in checks.values()))
+
+    def test_unreachable_cluster_still_reports_services(self):
+        snapshot = build_snapshot({
+            "error": "无法连接集群",
+            "host_services": {"tailscaled": "active", "containerd": "active", "kubelet": "active"},
+        }, "live")
+        checks = {check["id"]: check for check in snapshot["checks"]}
+        self.assertEqual(checks["cluster"]["status"], "fail")
+        self.assertEqual(checks["service-kubelet"]["status"], "ok")
+
+
+class KubeEdgeCloudCheckTest(unittest.TestCase):
+    def test_all_ready_is_ok(self):
+        result = kubeedge_cloud_check([
+            {"namespace": "kubeedge", "ready": True},
+            {"namespace": "kubeedge", "ready": True},
+        ])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("2/2", result["detail"])
+
+    def test_partial_ready_is_fail(self):
+        result = kubeedge_cloud_check([
+            {"namespace": "kubeedge", "ready": True},
+            {"namespace": "kubeedge", "ready": False},
+        ])
+        self.assertEqual(result["status"], "fail")
+
+    def test_missing_namespace_is_fail(self):
+        result = kubeedge_cloud_check([{"namespace": "amari-d2000", "ready": True}])
+        self.assertEqual(result["status"], "fail")
 
 
 class ParseTopTest(unittest.TestCase):

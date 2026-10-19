@@ -53,6 +53,7 @@ class CommandRunner:
         argv: Sequence[str],
         timeout: Optional[float] = None,
         input_text: Optional[str] = None,
+        cwd: Optional[str] = None,
     ) -> CommandResult:
         argv_list = [str(item) for item in argv]
         started = time.monotonic()
@@ -83,6 +84,7 @@ class CommandRunner:
                 timeout=timeout or self.default_timeout,
                 input=input_text,
                 env=env,
+                cwd=cwd,
                 check=False,
             )
             result = CommandResult(

@@ -30,6 +30,9 @@ class Config:
     # 缺失或读取失败时界面显示“未接入用户数据源”，不会编造数据。
     user_source: Optional[str] = None
     ue_capacity: int = 64
+    # 节点“架构”列的展示覆盖：{"d2000-edge": "arm64"}。只改界面显示，
+    # 不会修改集群里的 kubernetes.io/arch 标签，真实设备上应留空。
+    node_arch_overrides: Dict[str, str] = field(default_factory=dict)
     audit_log: Path = field(default_factory=lambda: Path.home() / ".kb" / "audit.jsonl")
     agents: List[AgentTarget] = field(default_factory=list)
     components: List[Dict[str, str]] = field(default_factory=lambda: [dict(item) for item in DEFAULT_COMPONENTS])
@@ -65,6 +68,12 @@ class Config:
         if "audit_log" in data:
             cfg.audit_log = Path(data["audit_log"]).expanduser()
         cfg.agents = [AgentTarget(**item) for item in data.get("agents", [])]
+        if isinstance(data.get("node_arch_overrides"), dict):
+            cfg.node_arch_overrides = {
+                str(key): str(value)
+                for key, value in data["node_arch_overrides"].items()
+                if value
+            }
         if data.get("components"):
             cfg.components = [dict(item) for item in data["components"]]
 

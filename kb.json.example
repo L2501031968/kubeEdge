@@ -9,6 +9,7 @@
   "prepare_script": null,
   "user_source": null,
   "ue_capacity": 64,
+  "node_arch_overrides": {},
   "agents": [
     { "name": "edge-sim", "url": "http://127.0.0.1:8081" }
   ]

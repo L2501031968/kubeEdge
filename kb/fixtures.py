@@ -148,6 +148,8 @@ def demo_raw() -> Dict[str, Any]:
         _pod("amari-d2000", "amari-sat-7d9f8c5b4-j7k8l", "d2000-edge", "amari-sat", "300m", "600m", "256Mi", "512Mi"),
         _pod("amari-d2000", "amari-load-7d9f8c5b4-m9n0p", "d2000-edge", "amari-load", "400m", "500m", "128Mi", "256Mi"),
         _pod("amari-edge", "amari-ue-7d9f8c5b4-q1r2s", "sdr", "amari-ue", "200m", "400m", "192Mi", "384Mi"),
+        _pod("kube-system", "coredns-55cb58b774-9gx45", "cloud", "coredns", "100m", "0.2", "70Mi", "170Mi"),
+        _pod("kube-system", "metrics-server-7887b478d6-hfh4c", "cloud", "metrics-server", "100m", "0.2", "200Mi", "400Mi"),
     ]
 
     deployments = [
@@ -157,6 +159,8 @@ def demo_raw() -> Dict[str, Any]:
         _deployment("amari-d2000", "amari-sat", "d2000-edge", "300m", "600m", "256Mi", "512Mi"),
         _deployment("amari-d2000", "amari-load", "d2000-edge", "400m", "500m", "128Mi", "256Mi"),
         _deployment("amari-edge", "amari-ue", "sdr", "200m", "400m", "192Mi", "384Mi"),
+        _deployment("kube-system", "coredns", "cloud", "100m", "0.2", "70Mi", "170Mi", replicas=2),
+        _deployment("kube-system", "metrics-server", "cloud", "100m", "0.2", "200Mi", "400Mi"),
     ]
 
     top_nodes = "\n".join([
@@ -171,6 +175,8 @@ def demo_raw() -> Dict[str, Any]:
         "amari-d2000   amari-sat-7d9f8c5b4-j7k8l    300m   240Mi",
         "amari-d2000   amari-load-7d9f8c5b4-m9n0p   495m   120Mi",
         "amari-edge    amari-ue-7d9f8c5b4-q1r2s      90m   140Mi",
+        "kube-system   coredns-55cb58b774-9gx45      5m    14Mi",
+        "kube-system   metrics-server-7887b478d6-hfh4c  3m  20Mi",
     ])
 
     return {

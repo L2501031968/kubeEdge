@@ -59,6 +59,21 @@ class ConfigLoadTest(unittest.TestCase):
         self.assertEqual(cfg.role, "host")
         self.assertIsNone(cfg.host_console)
 
+    def test_node_arch_overrides_default_to_empty(self):
+        cfg = self._load({"role": "host"})
+        self.assertEqual(cfg.node_arch_overrides, {})
+
+    def test_node_arch_overrides_are_loaded(self):
+        cfg = self._load({
+            "role": "host",
+            "node_arch_overrides": {"d2000-edge": "arm64"},
+        })
+        self.assertEqual(cfg.node_arch_overrides, {"d2000-edge": "arm64"})
+
+    def test_empty_node_arch_override_is_dropped(self):
+        cfg = self._load({"role": "host", "node_arch_overrides": {"d2000-edge": ""}})
+        self.assertEqual(cfg.node_arch_overrides, {})
+
 
 if __name__ == "__main__":
     unittest.main()

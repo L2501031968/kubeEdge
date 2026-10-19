@@ -1,5 +1,7 @@
 "use strict";
 
+// 前端版本标记：用于确认浏览器加载的是不是最新界面（旧缓存会显示旧值）。
+const UI_BUILD = "2026-10-19.3";
 const REFRESH_MS = 15000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STARTUP_COMPONENTS = [
@@ -52,8 +54,8 @@ let nodeAliases = {};
 let returnConsoleUrl = safeConsoleUrl(new URL(window.location.href).searchParams.get("from"), true);
 
 const listState = {
-  deployments: { page: 1, size: 10, query: "", node: "", namespace: "", state: "" },
-  pods: { page: 1, size: 10, query: "", node: "", namespace: "", status: "" },
+  deployments: { page: 1, size: 10, query: "", node: "", namespace: "", state: "", includeSystem: false },
+  pods: { page: 1, size: 10, query: "", node: "", namespace: "", status: "", includeSystem: false },
   logs: { page: 1, size: 10, query: "", result: "", type: "" },
   users: { page: 1, size: 10, query: "", state: "", cell: "" },
   modules: { query: "", state: "" },
@@ -192,6 +194,11 @@ function groupDivider(items, index, predicate, columns, title) {
   if (index <= 0 || index >= items.length) return "";
   if (!predicate(items[index]) || predicate(items[index - 1])) return "";
   return '<tr class="group-row"><td colspan="' + columns + '">' + esc(title) + "</td></tr>";
+}
+
+function emptyListHint(message, hiddenSystemRows, toggleLabel) {
+  if (!hiddenSystemRows) return esc(message);
+  return esc(message + "；当前只剩系统条目，勾选“" + toggleLabel + "”可查看");
 }
 
 function nodeCard(node) {
@@ -379,6 +386,7 @@ function renderDeployments(items) {
 
   const filtered = deploymentItems.filter(function (item) {
     const itemNodes = (item.nodes || []).map(displayNodeName);
+    if (!state.includeSystem && isSystemWorkload(item)) return false;
     if (state.namespace && item.namespace !== state.namespace) return false;
     if (state.node && itemNodes.indexOf(state.node) < 0) return false;
     if (state.state && deploymentState(item) !== state.state) return false;
@@ -392,7 +400,11 @@ function renderDeployments(items) {
   const visible = paginate(filtered, state);
   const tbody = document.querySelector("#deployments tbody");
   if (!visible.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">没有匹配的工作负载</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">' + emptyListHint(
+      "没有匹配的工作负载",
+      !state.includeSystem && deploymentItems.some(isSystemWorkload),
+      "显示系统工作负载",
+    ) + "</td></tr>";
     renderPager("deployments-pager", "deployments", filtered.length);
     return;
   }
@@ -434,6 +446,7 @@ function renderPods(items) {
 
   const filtered = podItems.filter(function (item) {
     const itemNode = item.node_alias || displayNodeName(item.display_node || item.node);
+    if (!state.includeSystem && isSystemWorkload(item)) return false;
     if (state.namespace && item.namespace !== state.namespace) return false;
     if (state.node && itemNode !== state.node) return false;
     if (state.status && item.status !== state.status) return false;
@@ -448,7 +461,11 @@ function renderPods(items) {
   const visible = paginate(filtered, state);
   const tbody = document.querySelector("#pods tbody");
   if (!visible.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty">没有匹配的 Pod</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">' + emptyListHint(
+      "没有匹配的 Pod",
+      !state.includeSystem && podItems.some(isSystemWorkload),
+      "显示系统 Pod",
+    ) + "</td></tr>";
     renderPager("pods-pager", "pods", filtered.length);
     return;
   }
@@ -918,6 +935,7 @@ function renderSettings() {
   add("运行模式", health.mode || "-");
   add("命令模式", health.dry_run ? "dry-run（只打印命令）" : "真实执行");
   add("允许真实硬件操作", health.allow_real_hardware ? "是" : "否");
+  add("界面版本", UI_BUILD);
   if (actionCatalog.role === "edge") {
     add("云主机控制台", actionCatalog.host_console || "未配置 host_console");
   } else {
@@ -1996,10 +2014,12 @@ function renderList(kind) {
   { id: "deploy-node", kind: "deployments", key: "node", event: "change" },
   { id: "deploy-namespace", kind: "deployments", key: "namespace", event: "change" },
   { id: "deploy-state", kind: "deployments", key: "state", event: "change" },
+  { id: "deploy-system", kind: "deployments", key: "includeSystem", event: "change", checked: true },
   { id: "pod-search", kind: "pods", key: "query", event: "input" },
   { id: "pod-node", kind: "pods", key: "node", event: "change" },
   { id: "pod-namespace", kind: "pods", key: "namespace", event: "change" },
   { id: "pod-status", kind: "pods", key: "status", event: "change" },
+  { id: "pod-system", kind: "pods", key: "includeSystem", event: "change", checked: true },
   { id: "log-search", kind: "logs", key: "query", event: "input" },
   { id: "log-result", kind: "logs", key: "result", event: "change" },
   { id: "log-type", kind: "logs", key: "type", event: "change" },
@@ -2013,7 +2033,9 @@ function renderList(kind) {
   if (!control) return;
   control.addEventListener(config.event, function () {
     const state = listState[config.kind];
-    state[config.key] = config.key === "query" ? control.value.trim() : control.value;
+    state[config.key] = config.checked
+      ? control.checked
+      : (config.key === "query" ? control.value.trim() : control.value);
     state.page = 1;
     renderList(config.kind);
   });

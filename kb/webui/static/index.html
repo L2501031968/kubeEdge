@@ -251,6 +251,10 @@
               <option value="released">已回收</option>
             </select>
           </label>
+          <label class="filter filter-check">
+            <input type="checkbox" id="deploy-system">
+            <span>显示系统工作负载</span>
+          </label>
           <label class="filter filter-size">
             <span>每页</span>
             <select id="deploy-page-size"></select>
@@ -297,6 +301,10 @@
           <label class="filter">
             <span>状态</span>
             <select id="pod-status"></select>
+          </label>
+          <label class="filter filter-check">
+            <input type="checkbox" id="pod-system">
+            <span>显示系统 Pod</span>
           </label>
           <label class="filter filter-size">
             <span>每页</span>

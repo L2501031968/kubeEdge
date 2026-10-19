@@ -127,6 +127,7 @@ class AppState:
                 users_source,
                 self.cfg.ue_capacity,
                 data.get("mode") or ("demo" if self.cfg.demo else "live"),
+                self.cfg.node_arch_overrides,
             )
             if self._user_source_error:
                 domain["user_source_error"] = self._user_source_error

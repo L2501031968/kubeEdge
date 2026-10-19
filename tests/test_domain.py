@@ -5,7 +5,7 @@ from kb.discovery import build_snapshot
 from kb.domain import build_domain, is_accelerator_key, node_alias
 
 
-def demo_domain(users_source=None, capacity=64):
+def demo_domain(users_source=None, capacity=64, arch_overrides=None):
     snapshot = build_snapshot(fixtures.demo_raw(), "demo")
     return build_domain(
         snapshot["nodes"],
@@ -14,6 +14,7 @@ def demo_domain(users_source=None, capacity=64):
         users_source,
         capacity,
         "demo",
+        arch_overrides,
     )
 
 
@@ -93,6 +94,27 @@ class ResourcePoolTest(unittest.TestCase):
         self.assertEqual(nodes["cloud"]["alias"], "云端控制节点")
         self.assertEqual(nodes["d2000-edge"]["arch"], "arm64")
         self.assertEqual([item["label"] for item in nodes["cloud"]["accelerators"]], ["GPU"])
+
+
+class NodeArchDisplayTest(unittest.TestCase):
+    def test_arch_comes_from_node_label_by_default(self):
+        nodes = {node["name"]: node for node in demo_domain()["resources"]["nodes"]}
+        self.assertEqual(nodes["cloud"]["arch"], "amd64")
+        self.assertEqual(nodes["d2000-edge"]["arch"], "arm64")
+        self.assertEqual(nodes["sdr"]["arch"], "amd64")
+
+    def test_override_only_changes_display(self):
+        domain = demo_domain(arch_overrides={"cloud": "arm64", "sdr": "arm64"})
+        nodes = {node["name"]: node for node in domain["resources"]["nodes"]}
+        self.assertEqual(nodes["cloud"]["arch"], "arm64")
+        self.assertEqual(nodes["sdr"]["arch"], "arm64")
+        self.assertEqual(nodes["d2000-edge"]["arch"], "arm64")
+
+    def test_override_for_unknown_node_is_ignored(self):
+        domain = demo_domain(arch_overrides={"not-a-node": "arm64"})
+        nodes = {node["name"]: node for node in domain["resources"]["nodes"]}
+        self.assertEqual(nodes["cloud"]["arch"], "amd64")
+        self.assertEqual(nodes["sdr"]["arch"], "amd64")
 
 
 class UserFacetTest(unittest.TestCase):

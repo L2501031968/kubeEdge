@@ -18,9 +18,9 @@ class BuildSnapshotTest(unittest.TestCase):
         summary = self.snapshot["summary"]
         self.assertEqual(summary["nodes_total"], 3)
         self.assertEqual(summary["nodes_ready"], 3)
-        self.assertEqual(summary["pods_total"], 6)
-        self.assertEqual(summary["pods_running"], 6)
-        self.assertEqual(summary["deployments_total"], 6)
+        self.assertEqual(summary["pods_total"], 8)
+        self.assertEqual(summary["pods_running"], 8)
+        self.assertEqual(summary["deployments_total"], 8)
 
     def test_nodes_carry_usage_and_requests(self):
         nodes = {node["name"]: node for node in self.snapshot["nodes"]}
@@ -40,6 +40,13 @@ class BuildSnapshotTest(unittest.TestCase):
         self.assertAlmostEqual(core["cpu_limit_cores"], 0.6)
         self.assertAlmostEqual(core["cpu_used_cores"], 0.29)
         self.assertTrue(core["ready"])
+
+    def test_demo_includes_system_namespace_rows(self):
+        # 演示数据要覆盖 kube-system，界面“默认隐藏系统条目”的开关才有东西可切换。
+        namespaces = {pod["namespace"] for pod in self.snapshot["pods"]}
+        self.assertIn("kube-system", namespaces)
+        deploy_namespaces = {item["namespace"] for item in self.snapshot["deployments"]}
+        self.assertIn("kube-system", deploy_namespaces)
 
     def test_deployments(self):
         deployments = {item["name"]: item for item in self.snapshot["deployments"]}

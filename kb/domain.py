@@ -579,10 +579,28 @@ def build_users(
     }
 
 
+def _display_arch(
+    node: Dict[str, Any],
+    overrides: Optional[Dict[str, str]],
+) -> Optional[str]:
+    """展示用架构：kb.json 的覆盖优先，否则读节点上的 kubernetes.io/arch 标签。
+
+    只影响界面“架构”一列，不改动集群标签；真实设备上应留空覆盖。
+    """
+
+    name = str(node.get("name") or "")
+    if overrides:
+        override = overrides.get(name)
+        if override:
+            return str(override)
+    return (node.get("labels") or {}).get("kubernetes.io/arch")
+
+
 def build_resources(
     nodes: Sequence[Dict[str, Any]],
     pods: Sequence[Dict[str, Any]],
     mode: str,
+    arch_overrides: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """异构资源分面：CPU / 内存 / 存储 / 网络 + 已发现加速资源。"""
 
@@ -676,7 +694,7 @@ def build_resources(
             "roles": node.get("roles") or [],
             "ready": bool(node.get("ready")),
             "pods": node.get("pods") or 0,
-            "arch": (node.get("labels") or {}).get("kubernetes.io/arch"),
+            "arch": _display_arch(node, arch_overrides),
             "os": (node.get("labels") or {}).get("kubernetes.io/os"),
             "cpu": {
                 "allocatable": node.get("cpu_allocatable_cores"),
@@ -739,13 +757,14 @@ def build_domain(
     users_source: Optional[Dict[str, Any]],
     ue_capacity: int,
     mode: str,
+    arch_overrides: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """一次性产出界面需要的三个业务分面和总览补充指标。"""
 
     modules = build_modules(nodes, pods, deployments)
     ue_module = next((item for item in modules if item["id"] == "ue"), None)
     users = build_users(users_source, ue_capacity, ue_module, mode)
-    resources = build_resources(nodes, pods, mode)
+    resources = build_resources(nodes, pods, mode, arch_overrides)
     pool = _pool_totals(nodes)
     return {
         "modules": modules,

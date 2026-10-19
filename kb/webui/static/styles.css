@@ -329,6 +329,21 @@ main {
   width: 220px;
 }
 
+.filter-check {
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-check input {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  border-radius: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .filter-size {
   margin-left: auto;
 }

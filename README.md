@@ -153,8 +153,21 @@ KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
 
 ### 用户接入数据源
 
+先区分两个状态：
+
+- `amari-ue-power on/off` 是本地 UE 仿真器与 SDR 的设备状态；上电不等于用户已经注册，
+  下电也不等同于某个订阅用户主动下线。
+- 界面里的「在线用户」必须来自 AMF、SMF、统一数据管理或设备模型导出的真实数据。
+  推荐导出器直接给出 `online`，或者至少提供 `registration_state`；不要根据上电状态生成在线用户。
+
 用户接入页不猜测在线人数。没有提供数据源时会明确显示「未接入用户数据源」；读取失败时
-在页面上给出路径和错误，不会把缺失值补成 0。配置项放在 `kb.json`：
+在页面上给出路径和错误，不会把缺失值补成 0。云主机的数据源优先级如下：
+
+1. `kb.json` 中明确配置的 `user_source`；
+2. 控制台启动目录下的 `kb-users.json`；
+3. 已登记边缘控制台的 `/api/users` 聚合结果。
+
+配置项可以放在 `kb.json`：
 
 ```json
 {
@@ -163,7 +176,8 @@ KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
 }
 ```
 
-`user_source` 指向 AMF / SMF / 设备模型导出的 JSON，单个用户至少应包含 `id` 与 `state`：
+`user_source` 指向 AMF / SMF / 设备模型导出的 JSON。单个用户至少应包含 `id`；
+推荐同时提供 `online`。旧数据源只提供 `state` 时，`connected` / `active` 仍按兼容规则计为在线：
 
 ```json
 {
@@ -173,6 +187,10 @@ KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
   "users": [
     {
       "id": "ue-1",
+      "online": true,
+      "registration_state": "registered",
+      "connection_state": "connected",
+      "session_state": "active",
       "state": "connected",
       "sessions": 1,
       "bandwidth_mbps": 10,
@@ -186,9 +204,13 @@ KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
 }
 ```
 
-`capacity` 缺省时使用 `ue_capacity`；`connected` 和 `active` 计为在线。用户页的单用户
-CPU / 内存是把 UE 模块 Pod 申请量除以在线人数得到的平均值，并会明确标注，避免把它误读为
-单个用户的真实占用。
+`online` 的优先级最高；没有 `online` 时使用 `registration_state`；两者都没有才回退到旧版
+`state`。`capacity` 缺省时使用 `ue_capacity`。用户页的单用户 CPU / 内存是把 UE 模块 Pod
+申请量除以在线人数得到的平均值，并会明确标注，避免把它误读为单个用户的真实占用。
+
+边缘控制台没有用户数据源时，`/api/users` 会返回 `available: false`，即使模拟 UE 已经上电
+也不会凭空生成一个用户。这样主机页面可以如实显示「未接入」，而设备页仍单独显示 UE 的
+上电、Amarisoft 模式和 SDR 状态。
 
 ### 节点架构显示
 

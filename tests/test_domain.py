@@ -166,6 +166,21 @@ class UserFacetTest(unittest.TestCase):
         self.assertIn("按 Pod 申请量折算为平均值", users["share_note"])
         self.assertIn("cell-1", users["cells"])
 
+    def test_explicit_online_and_registration_state_are_respected(self):
+        users = demo_domain({
+            "source": "amf-export",
+            "users": [
+                {"id": "ue-1", "online": False, "state": "connected"},
+                {"id": "ue-2", "online": True, "state": "offline"},
+                {"id": "ue-3", "registration_state": "registered", "state": "idle"},
+            ],
+        })["users"]
+
+        self.assertEqual(users["online"], 2)
+        self.assertFalse(users["users"][0]["online"])
+        self.assertTrue(users["users"][1]["online"])
+        self.assertTrue(users["users"][2]["online"])
+
     def test_per_user_request_is_derived_from_ue_pod(self):
         users = demo_domain(fixtures.demo_users())["users"]
         # UE Pod 申请 200m，8 个在线用户折算 25m。

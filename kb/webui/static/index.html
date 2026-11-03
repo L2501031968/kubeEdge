@@ -91,8 +91,9 @@
           <h2>未接入用户数据源</h2>
         </div>
         <p class="hint">
-          平台不伪造用户数。接入 AMF / SMF / 设备模型导出的 JSON 后，这里显示在线用户、
-          会话、带宽与 PRB 占用，配置方式见「系统设置」。
+          平台不伪造用户数。UE 上电/下电只表示设备仿真状态，不代表用户已经注册或建立业务。
+          接入 AMF / SMF / 设备模型导出的 JSON 后，这里才显示在线用户、会话、带宽与 PRB 占用；
+          配置方式见「系统设置」。
         </p>
         <div id="users-ue-pods" class="module-strip"></div>
       </section>
@@ -504,9 +505,14 @@
   "ue_capacity": 64
 }</pre>
         <p class="hint">
-          <code>user_source</code> 指向 AMF / SMF / 设备模型导出的 JSON：
-          <code>{"source": "...", "generated_at": "...", "capacity": 64, "users": [{"id": "ue-1", "state": "connected", "sessions": 1, "bandwidth_mbps": 10, "prb_percent": 5, "rsrp_dbm": -85, "cell": "cell-1", "pod": "amari-ue-...", "node": "sdr"}]}</code>。
-          没有配置或读取失败时，用户接入页显示「未接入用户数据源」，不会补零。
+          <code>user_source</code> 指向 AMF / SMF / 设备模型导出的 JSON。推荐由导出器直接给出
+          <code>online</code>，也可以提供 <code>registration_state</code>、<code>connection_state</code>
+          和 <code>session_state</code>；不要让边缘控制台按 <code>amari-ue-power</code> 猜测用户在线。
+          示例：
+          <code>{"source": "...", "generated_at": "...", "capacity": 64, "users": [{"id": "ue-1", "online": true, "registration_state": "registered", "connection_state": "connected", "session_state": "active", "state": "connected", "sessions": 1, "bandwidth_mbps": 10, "prb_percent": 5, "rsrp_dbm": -85, "cell": "cell-1", "pod": "amari-ue-...", "node": "sdr"}]}</code>。
+          云主机没有本地 <code>user_source</code> 时，会自动聚合已登记边缘控制台的
+          <code>/api/users</code>；当前目录存在 <code>kb-users.json</code> 时优先使用该文件。
+          没有配置、读取失败或边缘都不可达时，用户接入页显示「未接入用户数据源」，不会补零。
         </p>
       </section>
 

@@ -56,7 +56,7 @@ BUSINESS_MODULES: Sequence[Dict[str, Any]] = (
         "id": "ue",
         "title": "UE",
         "subtitle": "终端仿真与接入",
-        "description": "UE 侧容器与 SDR 上电状态，用户接入统计从这里读取。",
+        "description": "UE 侧容器与 SDR 上电状态；用户接入统计只来自独立数据源，不按上电状态推断。",
         "components": ("amari-ue",),
         "labels": (("kb.local/module", "ue"),),
         "namespaces": (),
@@ -108,6 +108,22 @@ USER_STATE_LABELS = {
     "handover": "切换中",
     "offline": "离线",
 }
+
+
+def _user_is_online(item: Dict[str, Any], state: str) -> bool:
+    """Return the data source's explicit online decision.
+
+    ``online`` wins when supplied by an AMF/SMF/device-model exporter. For
+    older sources, ``registration_state`` is the next-best signal, followed by
+    the legacy ``state`` field. UE power state is intentionally not considered.
+    """
+
+    if isinstance(item.get("online"), bool):
+        return item["online"]
+    registration = str(item.get("registration_state") or "").strip().lower()
+    if registration:
+        return registration in ("registered", "connected", "active")
+    return state in ("connected", "active")
 
 
 def _now() -> str:
@@ -496,7 +512,7 @@ def build_users(
             "mode": mode,
             "capacity": capacity_value or None,
             "online": None,
-            "detail": "未接入用户数据源，配置 kb.json 的 user_source 后显示实时接入统计",
+            "detail": "未接入用户数据源；不会按 UE 上电状态推断在线人数",
             "generated_at": None,
             "users": [],
             "sessions": None,
@@ -516,10 +532,15 @@ def build_users(
     users: List[Dict[str, Any]] = []
     for index, item in enumerate(raw_users):
         state = str(item.get("state") or "connected").strip().lower()
+        online = _user_is_online(item, state)
         users.append({
             "id": str(item.get("id") or "ue-%d" % (index + 1)),
             "state": state,
             "state_label": USER_STATE_LABELS.get(state, state or "未知"),
+            "online": online,
+            "registration_state": item.get("registration_state"),
+            "connection_state": item.get("connection_state"),
+            "session_state": item.get("session_state"),
             "sessions": item.get("sessions"),
             "bandwidth_mbps": item.get("bandwidth_mbps"),
             "prb_percent": item.get("prb_percent"),
@@ -532,7 +553,7 @@ def build_users(
             "note": item.get("note"),
         })
 
-    online = len([user for user in users if user["state"] in ("connected", "active")])
+    online = len([user for user in users if user["online"]])
     sessions = _sum_optional(user.get("sessions") for user in users)
     bandwidth = _sum_optional(user.get("bandwidth_mbps") for user in users)
     prb_values = [float(user["prb_percent"]) for user in users if user.get("prb_percent") is not None]

@@ -1,0 +1,10 @@
+cd ~/kubeEdge
+bash scripts/run-console.sh
+
+http://192.168.88.131:8080
+
+cd ~/kubeEdge
+KB_ROLE=edge KB_SIM=1 KB_LISTEN=0.0.0.0:8081 bash scripts/run-console.sh
+http://192.168.88.132:8081
+
+浏览器强制刷新crtl+shift+R

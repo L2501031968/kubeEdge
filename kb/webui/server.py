@@ -52,6 +52,74 @@ def _forward(agent_url: str, payload: Dict[str, Any], timeout: float = 180.0) ->
         raise ActionError("无法连接边缘控制台 %s：%s" % (agent_url, exc), status=502)
 
 
+def _read_user_source(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """读取用户接入 JSON；失败时返回可展示的错误，不补零也不猜测。"""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, "无法读取 user_source %s：%s" % (path, exc)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return None, "user_source %s 不是合法 JSON：%s" % (path, exc)
+    if not isinstance(payload, dict):
+        return None, "user_source %s 需要是 JSON 对象" % path
+    return payload, None
+
+
+def _fetch_json(url: str, timeout: float = 2.0) -> Dict[str, Any]:
+    request = urlrequest.Request(
+        url,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urlrequest.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise ActionError("边缘控制台返回错误：%s" % (detail or exc), status=502)
+    except (urlerror.URLError, TimeoutError, OSError) as exc:
+        raise ActionError("无法连接边缘控制台 %s：%s" % (url, exc), status=502)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ActionError("边缘控制台用户数据不是合法 JSON：%s" % exc, status=502)
+    if not isinstance(payload, dict):
+        raise ActionError("边缘控制台用户数据不是 JSON 对象", status=502)
+    return payload
+
+
+def _merge_user_sources(
+    sources: List[Dict[str, Any]],
+    errors: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """合并多个边缘用户源，按用户 id 去重，保留每台边缘的实际状态。"""
+
+    users: Dict[str, Dict[str, Any]] = {}
+    labels: List[str] = []
+    generated: List[str] = []
+    for source in sources:
+        label = str(source.get("source") or "edge-user-source")
+        if label not in labels:
+            labels.append(label)
+        if source.get("generated_at"):
+            generated.append(str(source["generated_at"]))
+        for index, raw_user in enumerate(source.get("users") or []):
+            if not isinstance(raw_user, dict):
+                continue
+            user_id = str(raw_user.get("id") or "edge-user-%d" % (index + 1))
+            if user_id in users:
+                continue
+            item = dict(raw_user)
+            item["id"] = user_id
+            item.setdefault("note", "来自 " + label)
+            users[user_id] = item
+    return {
+        "source": "边缘控制台聚合：" + ("、".join(labels) if labels else "edge"),
+        "source_errors": list(errors or []),
+        "generated_at": max(generated) if generated else _now(),
+        "users": list(users.values()),
+    }
+
+
 class AppState:
     def __init__(self, cfg: Config, runner: CommandRunner) -> None:
         self.cfg = cfg
@@ -95,27 +163,74 @@ class AppState:
             return data
 
     def _user_source(self) -> Optional[Dict[str, Any]]:
-        """读取用户接入数据源；演示模式用内置样例，真实模式读 kb.json 里的 JSON。"""
+        """读取用户接入数据源。
+
+        优先级：
+
+        1. ``kb.json.user_source`` 明确配置的本地 JSON；
+        2. 当前目录下的 ``kb-users.json``；
+        3. 云主机从已登记边缘控制台的 ``/api/users`` 聚合。
+
+        模拟 UE 上电状态不属于用户接入数据，不能被当成在线人数。
+        """
 
         self._user_source_error = None
         if self.cfg.demo:
             return fixtures.demo_users()
-        path = self.cfg.user_source
-        if not path:
+        default_path = Path.cwd() / "kb-users.json"
+        configured_path = Path(str(self.cfg.user_source)).expanduser() if self.cfg.user_source else None
+        source_path = configured_path or default_path
+        has_local_source = configured_path is not None or default_path.is_file()
+        if has_local_source:
+            payload, error = _read_user_source(source_path)
+            self._user_source_error = error
+            return payload
+
+        if self.cfg.role != "host" or not self.cfg.agents:
             return None
-        source_path = Path(str(path)).expanduser()
-        try:
-            payload = json.loads(source_path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            self._user_source_error = "无法读取 user_source %s：%s" % (source_path, exc)
-            return None
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            self._user_source_error = "user_source %s 不是合法 JSON：%s" % (source_path, exc)
-            return None
-        if not isinstance(payload, dict):
-            self._user_source_error = "user_source %s 需要是 JSON 对象" % source_path
-            return None
-        return payload
+
+        sources: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        for target in self.cfg.agents:
+            try:
+                payload = self._fetch_agent_user_source(target.url)
+            except Exception as exc:
+                errors.append("%s：%s" % (target.name, exc))
+                continue
+            if payload.get("available") and isinstance(payload.get("users"), list):
+                if not payload.get("source"):
+                    payload["source"] = target.name
+                sources.append(payload)
+        if sources:
+            if errors:
+                self._user_source_error = "部分边缘用户数据源不可用：" + "；".join(errors[:3])
+            return _merge_user_sources(sources, errors)
+        if errors:
+            self._user_source_error = "边缘用户数据源不可用：" + "；".join(errors[:3])
+        return None
+
+    def _fetch_agent_user_source(self, agent_url: str) -> Dict[str, Any]:
+        return _fetch_json(agent_url.rstrip("/") + "/api/users", timeout=2.0)
+
+    def users_payload(self) -> Dict[str, Any]:
+        """供边缘控制台暴露本机真实用户源；不根据上电状态生成用户。"""
+
+        payload = self._user_source()
+        if payload is None:
+            return {
+                "available": False,
+                "detail": self._user_source_error or "未配置用户数据源；不会按 UE 上电状态推断在线人数",
+                "users": [],
+            }
+        return {
+            "available": True,
+            "source": payload.get("source") or self.cfg.user_source or "kb-users.json",
+            "generated_at": payload.get("generated_at"),
+            "capacity": payload.get("capacity"),
+            "detail": payload.get("detail") or "数据源已接入；在线状态由数据源决定",
+            "source_errors": payload.get("source_errors") or [],
+            "users": payload.get("users") or [],
+        }
 
     def _attach_domain(self, data: Dict[str, Any]) -> None:
         try:
@@ -183,6 +298,7 @@ class AppState:
             data = _forward(url, {"id": action_id, "params": params or {}})
             data["forwarded_to"] = target.name if target else url
             data["local"] = False
+            self.invalidate()
             return data
 
         data = run_action(self.cfg, self.runner, action_id, params, components=self.cfg.components)
@@ -231,6 +347,9 @@ def make_handler(state: AppState):
                 return
             if path == "/api/agents":
                 self._write_json({"items": state.agents()})
+                return
+            if path == "/api/users":
+                self._write_json(state.users_payload())
                 return
             if path == "/api/log":
                 query = parse_qs(urlparse(self.path).query)

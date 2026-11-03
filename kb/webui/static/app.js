@@ -1,7 +1,7 @@
 "use strict";
 
 // 前端版本标记：用于确认浏览器加载的是不是最新界面（旧缓存会显示旧值）。
-const UI_BUILD = "2026-10-19.5";
+const UI_BUILD = "2026-10-20.1";
 const REFRESH_MS = 15000;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 const STARTUP_COMPONENTS = [
@@ -746,7 +746,12 @@ function renderUsers() {
     ? "数据时间 " + new Date(users.generated_at).toLocaleString("zh-CN", { hour12: false })
     : "";
   if (note) {
-    note.textContent = [users.share_note, generated].filter(Boolean).join(" · ");
+    note.textContent = [
+      users.available ? null : users.detail,
+      domainData && domainData.user_source_error,
+      users.share_note,
+      generated,
+    ].filter(Boolean).join(" · ");
   }
   if (meta) {
     meta.textContent = users.available ? (users.detail || "") : "";
@@ -942,10 +947,10 @@ function renderSettings() {
   add("命令模式", health.dry_run ? "dry-run（只打印命令）" : "真实执行");
   add("允许真实硬件操作", health.allow_real_hardware ? "是" : "否");
   add("界面版本", UI_BUILD);
+  const agents = actionCatalog.agents || [];
   if (actionCatalog.role === "edge") {
     add("云主机控制台", actionCatalog.host_console || "未配置 host_console");
   } else {
-    const agents = actionCatalog.agents || [];
     add(
       "已登记边缘控制台",
       agents.length
@@ -953,7 +958,12 @@ function renderSettings() {
         : "未配置 agents"
     );
   }
-  add("用户数据源", actionCatalog.user_source || "未配置（用户接入页显示未接入）");
+  const sourceText = actionCatalog.user_source
+    ? actionCatalog.user_source
+    : (actionCatalog.role === "host" && agents.length
+      ? "未配置本地源；自动聚合边缘控制台 /api/users"
+      : "未配置（用户接入页显示未接入）");
+  add("用户数据源", sourceText);
   add("用户接入容量", (actionCatalog.ue_capacity === null || actionCatalog.ue_capacity === undefined
     ? "-" : actionCatalog.ue_capacity + " 用户"));
   box.innerHTML = items.join("");
@@ -985,7 +995,12 @@ function renderOverviewDomain(data) {
       "ok"
     ));
   } else {
-    cards.push(metricCard("在线用户", "未接入", "配置 kb.json 的 user_source 后显示", ""));
+    cards.push(metricCard(
+      "在线用户",
+      "未接入",
+      "配置用户数据源，或从边缘控制台上报 /api/users 后显示",
+      ""
+    ));
   }
   const cpuAlloc = Number(summary.cpu_allocatable_cores) || 0;
   const cpuRequest = Number(summary.cpu_requested_cores) || 0;
@@ -1088,7 +1103,7 @@ function renderEdge(data) {
   const info = [
     { label: "主机名", value: agent.hostname || "-" },
     { label: "Tailscale IP", value: agent.tailscale_ip || "-" },
-    { label: "UE 上电状态", value: agent.ue_power || "-" },
+    { label: "UE 上电状态（设备状态，不代表用户在线）", value: agent.ue_power || "-" },
     { label: "Amarisoft 模式", value: agent.mode || "-" },
     { label: "网络模式", value: agent.network_mode || "-" },
     { label: "SDR 设备", value: devices.sdr0 ? "/dev/sdr0 存在" : "未发现" },
